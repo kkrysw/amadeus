@@ -141,7 +141,7 @@ class PianoRollAudioDataset(Dataset):
         torch.save(data, saved_data_path)
         return data
 
-
+'''
 class MAESTRO(PianoRollAudioDataset):
 
     def __init__(self, path='../../public_data/MAESTRO/', groups=None, sequence_length=None, seed=42, refresh=False, device='cpu'):
@@ -177,7 +177,7 @@ class MAESTRO(PianoRollAudioDataset):
                 np.savetxt(tsv_filename, midi, fmt='%.6f', delimiter='\t', header='onset,offset,note,velocity')
             result.append((audio_path, tsv_filename))
         return result
-
+'''
 
 class MAPS(PianoRollAudioDataset):
     def __init__(self, path='./MAPS', groups=None, sequence_length=None, overlap=True,
@@ -212,7 +212,7 @@ class MAPS(PianoRollAudioDataset):
         assert(all(os.path.isfile(tsv) for tsv in tsvs))
 
         return sorted(zip(flacs, tsvs))
-
+'''
 class MusicNet(PianoRollAudioDataset):
     def __init__(self, path='./MusicNet', groups=None, sequence_length=None, seed=42, refresh=False, device='cpu'):
         super().__init__(path, groups if groups is not None else ['train'], sequence_length, seed, refresh, device)
@@ -340,7 +340,7 @@ class MusicNet(PianoRollAudioDataset):
         assert(all(os.path.isfile(tsv) for tsv in tsvs))
 
         return zip(flacs, tsvs)
-    
+'''    
     
 class Guqin(PianoRollAudioDataset):
     def __init__(self, path='./Guqin', groups=None, sequence_length=None, seed=42, refresh=False, device='cpu'):

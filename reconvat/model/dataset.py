@@ -191,6 +191,7 @@ class MAPS(PianoRollAudioDataset):
         return ['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'ENSTDkAm', 'ENSTDkCl', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2']
 
     def files(self, group):
+        '''
         #flacs = glob(os.path.join(self.path, 'flac', '*_%s.flac' % group))
         def files(self, group):
             flacs = []
@@ -217,6 +218,33 @@ class MAPS(PianoRollAudioDataset):
 #         print(flacs)
         assert(all(os.path.isfile(flac) for flac in flacs))
         assert(all(os.path.isfile(tsv) for tsv in tsvs))
+
+        return sorted(zip(flacs, tsvs))
+        '''
+        flacs = []
+        # Recursively walk through all subdirectories under self.path
+        for root, dirs, files in os.walk(self.path):
+            for file in files:
+                if file.endswith('.flac') and f"_{group}" in file:
+                    flacs.append(os.path.join(root, file))
+
+        if self.overlap == False:
+            with open('overlapping.pkl', 'rb') as f:
+                test_names = pickle.load(f)
+            filtered_flacs = []
+            for i in flacs:
+                if not any(substring in i for substring in test_names):
+                    filtered_flacs.append(i)
+            flacs = sorted(filtered_flacs)
+
+            if self.supersmall:
+                flacs = [flacs[3]] if len(flacs) > 3 else flacs
+
+        # Attempt to infer tsvs from flac paths
+        tsvs = [f.replace('/flac/', '/tsvs/').replace('.flac', '.tsv') for f in flacs]
+
+        assert all(os.path.isfile(flac) for flac in flacs), "Missing flac file(s)"
+        assert all(os.path.isfile(tsv) for tsv in tsvs), "Missing tsv file(s)"
 
         return sorted(zip(flacs, tsvs))
 '''

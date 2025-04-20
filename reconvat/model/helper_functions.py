@@ -68,7 +68,7 @@ def prepare_VAT_dataset(sequence_length, validation_length, refresh, device, sma
                       sequence_length=sequence_length, overlap=False, device=device, refresh=refresh)
         validation_dataset = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'], sequence_length=validation_length, overlap=True, device=device, refresh=refresh)        
         full_validation = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'], sequence_length=None, device=device, refresh=refresh)
-    '''    
+    unused_code='''    
     elif dataset=='Violin':
         l_set = MusicNet(groups=['train_violin_l'],
                          sequence_length=sequence_length, device=device)            

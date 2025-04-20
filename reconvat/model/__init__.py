@@ -1,5 +1,6 @@
 from .constants import *
-from .dataset import MAPS, MAESTRO, MusicNet, Corelli, Application_Wind, Application_Dataset
+#from .dataset import MAPS, MAESTRO, MusicNet, Corelli, Application_Wind, Application_Dataset
+from .dataset import MAPS, Corelli, Application_Wind, Application_Dataset
 from .decoding import *
 from .midi import save_midi
 from .utils import *

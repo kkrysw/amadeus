@@ -30,18 +30,18 @@ def prepare_dataset(train_on, sequence_length, validation_length, leave_one_out,
         validation_groups = [str(leave_one_out)]
 
     # Choosing the dataset to use
-    '''
-    if train_on == 'MAESTRO':
-        dataset = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
-        validation_dataset = MAESTRO(groups=validation_groups, sequence_length=sequence_length)
+    
+ #   if train_on == 'MAESTRO':
+ #       dataset = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
+ #       validation_dataset = MAESTRO(groups=validation_groups, sequence_length=sequence_length)
 #         validation_dataset = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'], sequence_length=validation_length, device=device, refresh=refresh)
-
-    elif train_on == 'MusicNet':
-        dataset = MusicNet(groups=['train'], sequence_length=sequence_length, device=device, refresh=refresh)
-        validation_dataset = MusicNet(groups=['test'], sequence_length=sequence_length, device=device, refresh=refresh)
-
-    else:
-    '''
+ #
+ #   elif train_on == 'MusicNet':
+ #       dataset = MusicNet(groups=['train'], sequence_length=sequence_length, device=device, refresh=refresh)
+ #       validation_dataset = MusicNet(groups=['test'], sequence_length=sequence_length, device=device, refresh=refresh)
+ #
+ #   else:
+    
     dataset = MAPS(groups=['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2'],
                            sequence_length=sequence_length, overlap=False, device=device, refresh=refresh)
     validation_dataset = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'],
@@ -68,46 +68,46 @@ def prepare_VAT_dataset(sequence_length, validation_length, refresh, device, sma
                       sequence_length=sequence_length, overlap=False, device=device, refresh=refresh)
         validation_dataset = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'], sequence_length=validation_length, overlap=True, device=device, refresh=refresh)        
         full_validation = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'], sequence_length=None, device=device, refresh=refresh)
-    unused_code='''    
-    elif dataset=='Violin':
-        l_set = MusicNet(groups=['train_violin_l'],
-                         sequence_length=sequence_length, device=device)            
-        ul_set = MusicNet(groups=['train_violin_ul'],
-                         sequence_length=sequence_length, device=device) 
+ 
+ #   elif dataset=='Violin':
+ #       l_set = MusicNet(groups=['train_violin_l'],
+ #                        sequence_length=sequence_length, device=device)            
+ #       ul_set = MusicNet(groups=['train_violin_ul'],
+ #                        sequence_length=sequence_length, device=device) 
 #         ul_set = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
-    
-        validation_dataset = MusicNet(groups=['test_violin'], sequence_length=validation_length, device=device)
-        full_validation = MusicNet(groups=['test_violin'], sequence_length=None, device=device)      
-    elif dataset=='String':
-        l_set = MusicNet(groups=['train_string_l'],
-                         sequence_length=sequence_length, device=device)            
-        ul_set = MusicNet(groups=['train_string_ul'],
-                         sequence_length=sequence_length, device=device) 
+ #   
+ #       validation_dataset = MusicNet(groups=['test_violin'], sequence_length=validation_length, device=device)
+ #       full_validation = MusicNet(groups=['test_violin'], sequence_length=None, device=device)      
+ #   elif dataset=='String':
+ #       l_set = MusicNet(groups=['train_string_l'],
+ #                        sequence_length=sequence_length, device=device)            
+ #       ul_set = MusicNet(groups=['train_string_ul'],
+ #                        sequence_length=sequence_length, device=device) 
 #         ul_set = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
-    
-        validation_dataset = MusicNet(groups=['test_violin'], sequence_length=validation_length, device=device)
-        full_validation = MusicNet(groups=['test_violin'], sequence_length=None, device=device)
+ #   
+ #       validation_dataset = MusicNet(groups=['test_violin'], sequence_length=validation_length, device=device)
+ #       full_validation = MusicNet(groups=['test_violin'], sequence_length=None, device=device)
+ #       
+ #   elif dataset=='Wind':
+ #       l_set = MusicNet(groups=['train_wind_l'],
+ #                        sequence_length=sequence_length, device=device)            
+ #       ul_set = MusicNet(groups=['train_wind_ul'],
+ #                        sequence_length=sequence_length, device=device) 
+#         ul_set = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
+ #   
+ #       validation_dataset = MusicNet(groups=['test_wind'], sequence_length=validation_length, device=device)
+ #       full_validation = MusicNet(groups=['test_wind'], sequence_length=None, device=device) 
+ #       
+ #   elif dataset=='Flute':
+ #       l_set = MusicNet(groups=['train_flute_l'],
+ #                        sequence_length=sequence_length, device=device)            
+ #       ul_set = MusicNet(groups=['train_flute_ul'],
+ #                        sequence_length=sequence_length, device=device) 
+#         ul_set = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
+ # 
+ #       validation_dataset = MusicNet(groups=['test_flute'], sequence_length=validation_length, device=device)
+ #       full_validation = MusicNet(groups=['test_flute'], sequence_length=None, device=device)              
         
-    elif dataset=='Wind':
-        l_set = MusicNet(groups=['train_wind_l'],
-                         sequence_length=sequence_length, device=device)            
-        ul_set = MusicNet(groups=['train_wind_ul'],
-                         sequence_length=sequence_length, device=device) 
-#         ul_set = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
-    
-        validation_dataset = MusicNet(groups=['test_wind'], sequence_length=validation_length, device=device)
-        full_validation = MusicNet(groups=['test_wind'], sequence_length=None, device=device) 
-        
-    elif dataset=='Flute':
-        l_set = MusicNet(groups=['train_flute_l'],
-                         sequence_length=sequence_length, device=device)            
-        ul_set = MusicNet(groups=['train_flute_ul'],
-                         sequence_length=sequence_length, device=device) 
-#         ul_set = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
-    
-        validation_dataset = MusicNet(groups=['test_flute'], sequence_length=validation_length, device=device)
-        full_validation = MusicNet(groups=['test_flute'], sequence_length=None, device=device)              
-    '''    
     elif dataset=='Guqin':
         l_set = Guqin(groups=['train_l'],
                          sequence_length=sequence_length, device=device, refresh=refresh)            

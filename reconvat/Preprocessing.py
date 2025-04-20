@@ -131,3 +131,14 @@ for wavfile in tqdm(glob('.././*/*.wav')):
     sound.export(wavfile[:-3] + 'flac', format='flac')
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Creating dummy tsv for the VAT
+for wavfile in tqdm(glob('.././*/*.wav')):
+    tsv_path = wavfile.replace('.wav', '.tsv')
+    
+    notes = []
+    note = (60,60,60,60)
+    for i in range(5):
+        notes.append(note)
+    
+    np.savetxt(tsv_path, notes, '%.6f', '\t', header='onset\toffset\tnote\tvelocity')

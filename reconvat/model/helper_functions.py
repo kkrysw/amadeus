@@ -8,6 +8,7 @@ import numpy as np
 
 # Mac users need to uncomment these two lines
 import matplotlib
+#matploblib.use('TkAgg')
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable

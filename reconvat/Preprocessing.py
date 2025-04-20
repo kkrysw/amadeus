@@ -122,3 +122,12 @@ else:
 Parallel(n_jobs=multiprocessing.cpu_count())(delayed(process)(in_file, out_file) for in_file, out_file in files(midis, output_dir=output_dir))
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+for wavfile in tqdm(glob('.././*/*.wav')):
+    sound = AudioSegment.from_wav(wavfile)
+    sound = sound.set_frame_rate(16000) # downsample it to 16000
+    sound = sound.set_channels(1) # Convert Stereo to Mono
+    
+    sound.export(wavfile[:-3] + 'flac', format='flac')
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -118,7 +118,11 @@ def prepare_VAT_dataset(sequence_length, validation_length, refresh, device, sma
         full_validation = Guqin(groups=['test'], sequence_length=None, device=device, refresh=refresh)           
     else:
         raise Exception("Please choose the correct dataset")
-    
+
+    print(f"Size of labeled dataset: {len(l_set)}")
+    print(f"Size of unsupervised dataset: {len(ul_set)}")
+    print(f"Size of validation dataset: {len(validation_dataset)}")
+    print(f"Size of full validation dataset: {len(full_validation)}")
     return l_set, ul_set, validation_dataset, full_validation
      
     

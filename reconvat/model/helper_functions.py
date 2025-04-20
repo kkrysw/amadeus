@@ -30,6 +30,7 @@ def prepare_dataset(train_on, sequence_length, validation_length, leave_one_out,
         validation_groups = [str(leave_one_out)]
 
     # Choosing the dataset to use
+    '''
     if train_on == 'MAESTRO':
         dataset = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
         validation_dataset = MAESTRO(groups=validation_groups, sequence_length=sequence_length)
@@ -40,6 +41,7 @@ def prepare_dataset(train_on, sequence_length, validation_length, leave_one_out,
         validation_dataset = MusicNet(groups=['test'], sequence_length=sequence_length, device=device, refresh=refresh)
 
     else:
+    '''
         dataset = MAPS(groups=['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2'],
                            sequence_length=sequence_length, overlap=False, device=device, refresh=refresh)
         validation_dataset = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'],

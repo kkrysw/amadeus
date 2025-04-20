@@ -192,12 +192,11 @@ class MAPS(PianoRollAudioDataset):
 
     def files(self, group):
         #flacs = glob(os.path.join(self.path, 'flac', '*_%s.flac' % group))
-        def files(self, group):
-            flacs = []
-            for root, dirs, files in os.walk(self.path):
-                for file in files:
-                    if file.endswith('.flac') and f"_{group}" in file:
-                        flacs.append(os.path.join(root, file))
+        flacs = []
+        for root, dirs, files in os.walk(self.path):
+            for file in files:
+                if file.endswith('.flac') and f"_{group}" in file:
+                    flacs.append(os.path.join(root, file))
         if self.overlap==False:
             with open('overlapping.pkl', 'rb') as f:
                 test_names = pickle.load(f)
@@ -213,7 +212,7 @@ class MAPS(PianoRollAudioDataset):
                 flacs = [sorted(filtered_flacs)[3]]
         # tsvs = [f.replace('/flac/', '/tsv/matched/').replace('.flac', '.tsv') for f in flacs]
         tsvs = [f.replace('/flac/', '/tsvs/').replace('.flac', '.tsv') for f in flacs]
-#         print(flacs)
+#       print(flacs)
         assert(all(os.path.isfile(flac) for flac in flacs))
         assert(all(os.path.isfile(tsv) for tsv in tsvs))
 

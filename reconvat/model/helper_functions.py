@@ -63,10 +63,12 @@ def prepare_VAT_dataset(sequence_length, validation_length, refresh, device, sma
         else:
             l_set = MAPS(groups=['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2'],
                            sequence_length=sequence_length, overlap=False, device=device, refresh=refresh)    
-        ul_set = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
+        #ul_set = MAESTRO(groups=train_groups, sequence_length=sequence_length, device=device)
+        ul_set = MAPS(groups=['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2'], 
+                      sequence_length=sequence_length, overlap=False, device=device, refresh=refresh)
         validation_dataset = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'], sequence_length=validation_length, overlap=True, device=device, refresh=refresh)        
         full_validation = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'], sequence_length=None, device=device, refresh=refresh)
-        
+    '''    
     elif dataset=='Violin':
         l_set = MusicNet(groups=['train_violin_l'],
                          sequence_length=sequence_length, device=device)            
@@ -105,7 +107,7 @@ def prepare_VAT_dataset(sequence_length, validation_length, refresh, device, sma
     
         validation_dataset = MusicNet(groups=['test_flute'], sequence_length=validation_length, device=device)
         full_validation = MusicNet(groups=['test_flute'], sequence_length=None, device=device)              
-        
+    '''    
     elif dataset=='Guqin':
         l_set = Guqin(groups=['train_l'],
                          sequence_length=sequence_length, device=device, refresh=refresh)            

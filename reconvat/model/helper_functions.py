@@ -42,9 +42,9 @@ def prepare_dataset(train_on, sequence_length, validation_length, leave_one_out,
 
     else:
     '''
-        dataset = MAPS(groups=['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2'],
+    dataset = MAPS(groups=['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2'],
                            sequence_length=sequence_length, overlap=False, device=device, refresh=refresh)
-        validation_dataset = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'],
+    validation_dataset = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'],
                                   sequence_length=validation_length, overlap=True, device=device, refresh=refresh)
 
     full_validation = MAPS(groups=['ENSTDkAm', 'ENSTDkCl'], sequence_length=None, device=device, refresh=refresh)

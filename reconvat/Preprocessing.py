@@ -1,4 +1,3 @@
-
 from scipy.io import wavfile
 from pydub import AudioSegment
 from glob import glob
@@ -112,4 +111,14 @@ def files(file_list, output_dir=False):
 
         yield (input_file, output_file)
 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+midis = glob('./MAPS/*/MUS/*.mid') # loading lists of midi files
+output_dir = '../MAPS/tsvs' # prepare a dir for the tsv output
+if os.path.exists(output_dir):
+    pass
+else:
+    os.makedirs(output_dir)
+Parallel(n_jobs=multiprocessing.cpu_count())(delayed(process)(in_file, out_file) for in_file, out_file in files(midis, output_dir=output_dir))
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------

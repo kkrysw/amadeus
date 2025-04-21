@@ -25,13 +25,26 @@ class PianoRollAudioDataset(Dataset):
         self.device = device
         self.random = np.random.RandomState(seed)
         self.refresh = refresh
-        
+        '''
         self.data = []
         print(f"Loading {len(self.groups)} group{'s' if len(self.groups) > 1 else ''} "
               f"of {self.__class__.__name__} at {path}")
         for group in self.groups:
             for input_files in tqdm(self.files(group), desc='Loading group %s' % group): #self.files is defined in MAPS class
                 self.data.append(self.load(*input_files)) # self.load is a function defined below. It first loads all data into memory first
+        '''
+        cache_key = (tuple(self.groups), path)
+        if not refresh and cache_key in self._dataset_cache:
+            print(f"Using cached data for groups {self.groups}")
+            self.data = self._dataset_cache[cache_key]
+        else:
+            self.data = []
+            print(f"Loading {len(self.groups)} group{'s' if len(self.groups) > 1 else ''} "
+                  f"of {self.__class__.__name__} at {path}")
+            for group in self.groups:
+                for input_files in tqdm(self.files(group), desc='Loading group %s' % group):
+                    self.data.append(self.load(*input_files))
+            self._dataset_cache[cache_key] = self.data
         
     def __getitem__(self, index):
 

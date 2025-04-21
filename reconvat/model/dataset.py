@@ -51,6 +51,10 @@ class PianoRollAudioDataset(Dataset):
         data = self.data[index]
         result = dict(path=data['path'])
 
+        if self.sequence_length is not None and len(data['audio'])<self.sequence_length:
+            # Skip the current index and get the next one
+            return self.__getitem__((index + 1) % len(self.data))
+        
         if self.sequence_length is not None:
             audio_length = len(data['audio'])
             step_begin = self.random.randint(audio_length - self.sequence_length) // HOP_LENGTH

@@ -17,6 +17,7 @@ from .midi import parse_midi
 
 
 class PianoRollAudioDataset(Dataset):
+    _dataset_cache = {}
     def __init__(self, path, groups=None, sequence_length=None, seed=42, refresh=False, device='cpu'):
         self.path = path
         self.groups = groups if groups is not None else self.available_groups()
@@ -33,19 +34,18 @@ class PianoRollAudioDataset(Dataset):
             for input_files in tqdm(self.files(group), desc='Loading group %s' % group): #self.files is defined in MAPS class
                 self.data.append(self.load(*input_files)) # self.load is a function defined below. It first loads all data into memory first
         '''
-        cache_key = (tuple(self.groups), path)
-        if not refresh and cache_key in self._dataset_cache:
-            print(f"Using cached data for groups {self.groups}")
-            self.data = self._dataset_cache[cache_key]
+        cache_key = (self.__class__.__name__, tuple(sorted(self.groups)), path)
+        if cache_key in PianoRollAudioDataset._dataset_cache and not self.refresh:
+            print(f"Using cached data for {cache_key}")
+            self.data = PianoRollAudioDataset._dataset_cache[cache_key]
         else:
+            print(f"Loading data for {cache_key}")
             self.data = []
-            print(f"Loading {len(self.groups)} group{'s' if len(self.groups) > 1 else ''} "
-                  f"of {self.__class__.__name__} at {path}")
             for group in self.groups:
                 for input_files in tqdm(self.files(group), desc='Loading group %s' % group):
                     self.data.append(self.load(*input_files))
-            self._dataset_cache[cache_key] = self.data
-        
+            PianoRollAudioDataset._dataset_cache[cache_key] = self.data
+         
     def __getitem__(self, index):
 
         data = self.data[index]

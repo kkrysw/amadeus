@@ -113,8 +113,10 @@ def files(file_list, output_dir=False):
 
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-midis = glob('./MAPS/*/MUS/*.mid') # loading lists of midi files
-output_dir = '../MAPS/tsvs' # prepare a dir for the tsv output
+#midis = glob('./MAPS/*/MUS/*.mid') # loading lists of midi files
+midis=glob('/content/MAPS/*/MUS/*.mid')
+#output_dir = '../MAPS/tsvs' # prepare a dir for the tsv output
+output_dir='/content/MAPS/tsvs'
 if os.path.exists(output_dir):
     pass
 else:
@@ -123,7 +125,8 @@ Parallel(n_jobs=multiprocessing.cpu_count())(delayed(process)(in_file, out_file)
 
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-for wavfile in tqdm(glob('.././*/*.wav')):
+#for wavfile in tqdm(glob('.././*/*.wav')):
+for wavfile in tqdm(glob('/content/MAPS/**/*.wav', recursive=True)):
     sound = AudioSegment.from_wav(wavfile)
     sound = sound.set_frame_rate(16000) # downsample it to 16000
     sound = sound.set_channels(1) # Convert Stereo to Mono
@@ -133,7 +136,8 @@ for wavfile in tqdm(glob('.././*/*.wav')):
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 # Creating dummy tsv for the VAT
-for wavfile in tqdm(glob('.././*/*.wav')):
+#for wavfile in tqdm(glob('.././*/*.wav')):
+for wavfile in tqdm(glob('/content/MAPS/**/*.wav', recursive=True)):
     tsv_path = wavfile.replace('.wav', '.tsv')
     
     notes = []

@@ -55,6 +55,8 @@ class PianoRollAudioDataset(Dataset):
             index = (index + 1) % len(self.data)
         else:
             return None
+        result = {}
+        result['path'] = data['path']
         '''
         data = self.data[index]
         result = dict(path=data['path'])

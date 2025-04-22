@@ -47,13 +47,23 @@ class PianoRollAudioDataset(Dataset):
             PianoRollAudioDataset._dataset_cache[cache_key] = self.data
          
     def __getitem__(self, index):
-
+        max_tries = len(self.data)  # Try every sample at most once
+        for _ in range(max_tries):
+            data = self.data[index]
+            if self.sequence_length is None or len(data['audio']) >= self.sequence_length:
+                break
+            index = (index + 1) % len(self.data)
+        else:
+            return None
+        '''
         data = self.data[index]
         result = dict(path=data['path'])
-
+        
         if self.sequence_length is not None and len(data['audio'])<self.sequence_length:
             # Skip the current index and get the next one
             return self.__getitem__((index + 1) % len(self.data))
+        '''
+        
         
         if self.sequence_length is not None:
             audio_length = len(data['audio'])

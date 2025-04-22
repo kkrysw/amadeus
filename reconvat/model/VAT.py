@@ -40,5 +40,10 @@ class stepwise_VAT(nn.Module):
         return vat_loss, r_adv  # already averaged
     
 def _l2_normalize(d):
+    '''
     d = d/torch.norm(d, dim=2, keepdim=True)
     return d
+    '''
+    eps=1e-6
+    norm=torch.norm(d, dim=2, keepdim=True)
+    return d/(norm+eps)

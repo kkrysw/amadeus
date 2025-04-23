@@ -45,5 +45,8 @@ def _l2_normalize(d):
     return d
     '''
     eps=1e-8
-    norm = torch.norm(d, dim=2, keepdim=True).clamp(min=eps)
-    return d / norm
+    norm = torch.norm(d, dim=2, keepdim=True)
+    norm = torch.where(norm < eps, torch.tensor(eps, device=d.device, dtype=d.dtype), norm)
+    d_normalized = d / norm
+    d_normalized = torch.nan_to_num(d_normalized, nan=0.0, posinf=0.0, neginf=0.0)
+    return d_normalized

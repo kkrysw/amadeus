@@ -40,5 +40,23 @@ class stepwise_VAT(nn.Module):
         return vat_loss, r_adv  # already averaged
     
 def _l2_normalize(d):
+    '''
     d = d/torch.norm(d, dim=2, keepdim=True)
+    return d
+    '''
+    eps=1e-8
+    if torch.isnan(d).any():
+        print("WARNING: d has NaNs before normalization")
+        d = torch.nan_to_num(d, nan=0.0)
+
+    norm = torch.norm(d, dim=2, keepdim=True)
+    if torch.isnan(norm).any() or (norm == 0).any():
+        print(f"WARNING: norm has NaNs or zeros. norm min={norm.min()} max={norm.max()}")
+
+    norm = norm + eps  # Prevent division by zero
+    d = d / norm
+
+    if torch.isnan(d).any():
+        print("WARNING: d has NaNs after normalization")
+        d = torch.nan_to_num(d, nan=0.0)
     return d

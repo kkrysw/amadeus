@@ -43,10 +43,8 @@ def config():
     VAT_start = 0
     alpha = 1
     VAT=True
-    #XI=1e-6
-    XI=1e-4
-    #eps=2
-    eps=0.5
+    XI= 1e-6
+    eps=2
     small = False
     KL_Div = False
     reconstruction = False

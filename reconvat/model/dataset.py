@@ -221,32 +221,21 @@ class MAPS(PianoRollAudioDataset):
         return ['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'ENSTDkAm', 'ENSTDkCl', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2']
 
     def files(self, group):
-        #flacs = glob(os.path.join(self.path, 'flac', '*_%s.flac' % group))
-        flacs = []
-        for root, dirs, files in os.walk(self.path):
-            for file in files:
-                if file.endswith('.flac') and f"_{group}" in file:
-                    flacs.append(os.path.join(root, file))
-        if self.overlap==False:
-            with open('overlapping.pkl', 'rb') as f:
-                test_names = pickle.load(f)
-            filtered_flacs = []    
-            for i in flacs:
-                if any([substring in i for substring in test_names]):
-                    pass
-                else:
-                    filtered_flacs.append(i)
-            flacs = sorted(filtered_flacs)
-            if self.supersmall==True:
-#                 print(sorted(filtered_flacs))
-                flacs = [sorted(filtered_flacs)[3]]
-        # tsvs = [f.replace('/flac/', '/tsv/matched/').replace('.flac', '.tsv') for f in flacs]
-        tsvs = [f.replace('/flac/', '/tsvs/').replace('.flac', '.tsv') for f in flacs]
-#       print(flacs)
-        assert(all(os.path.isfile(flac) for flac in flacs))
-        assert(all(os.path.isfile(tsv) for tsv in tsvs))
+    flacs = []
+    for root, dirs, files in os.walk(self.path):
+        for file in files:
+            if file.endswith('.flac') and f"_{group}" in file:
+                flac_path = os.path.join(root, file)
+                tsv_name = file.replace('.flac', '.tsv')
+                tsv_path = os.path.join(self.path, 'tsvs', tsv_name)  # hardcoded to match your structure
+                if not os.path.exists(tsv_path):
+                    raise FileNotFoundError(f"Missing TSV file for {flac_path}")
+                flacs.append((flac_path, tsv_path))
 
-        return sorted(zip(flacs, tsvs))
+    assert all(os.path.isfile(f[0]) for f in flacs)
+    assert all(os.path.isfile(f[1]) for f in flacs)
+    return sorted(flacs)
+
        
 '''
 class MusicNet(PianoRollAudioDataset):

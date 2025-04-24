@@ -221,20 +221,20 @@ class MAPS(PianoRollAudioDataset):
         return ['AkPnBcht', 'AkPnBsdf', 'AkPnCGdD', 'AkPnStgb', 'ENSTDkAm', 'ENSTDkCl', 'SptkBGAm', 'SptkBGCl', 'StbgTGd2']
 
     def files(self, group):
-    flacs = []
-    for root, dirs, files in os.walk(self.path):
-        for file in files:
-            if file.endswith('.flac') and f"_{group}" in file:
-                flac_path = os.path.join(root, file)
-                tsv_name = file.replace('.flac', '.tsv')
-                tsv_path = os.path.join(self.path, 'tsvs', tsv_name)  # hardcoded to match your structure
-                if not os.path.exists(tsv_path):
-                    raise FileNotFoundError(f"Missing TSV file for {flac_path}")
-                flacs.append((flac_path, tsv_path))
-
-    assert all(os.path.isfile(f[0]) for f in flacs)
-    assert all(os.path.isfile(f[1]) for f in flacs)
-    return sorted(flacs)
+        flacs = []
+        for root, dirs, files in os.walk(self.path):
+            for file in files:
+                if file.endswith('.flac') and f"_{group}" in file:
+                    flac_path = os.path.join(root, file)
+                    tsv_name = file.replace('.flac', '.tsv')
+                    tsv_path = os.path.join(self.path, 'tsvs', tsv_name)  # hardcoded to match your structure
+                    if not os.path.exists(tsv_path):
+                        raise FileNotFoundError(f"Missing TSV file for {flac_path}")
+                    flacs.append((flac_path, tsv_path))
+    
+        assert all(os.path.isfile(f[0]) for f in flacs)
+        assert all(os.path.isfile(f[1]) for f in flacs)
+        return sorted(flacs)
 
        
 '''

@@ -150,14 +150,7 @@ class PianoRollAudioDataset(Dataset):
         velocity = torch.zeros(n_steps, n_keys, dtype=torch.uint8)
 
         tsv_path = tsv_path
-        try:
-            midi = np.loadtxt(tsv_path, delimiter='\t', skiprows=1)
-            if midi.ndim == 1:
-                midi = np.expand_dims(midi, axis=0)
-        except Exception as e:
-            print(f"⚠Error reading {tsv_path}: {e}")
-            midi = np.zeros((0, 4))  # fallback: empty midi
-
+        midi = np.loadtxt(tsv_path, delimiter='\t', skiprows=1)
         
 #         print(f'audio size = {audio.shape}')
 #         print(f'label size = {label.shape}')

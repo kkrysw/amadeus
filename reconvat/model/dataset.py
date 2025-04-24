@@ -47,6 +47,7 @@ class PianoRollAudioDataset(Dataset):
             PianoRollAudioDataset._dataset_cache[cache_key] = self.data
          
     def __getitem__(self, index):
+        result = {}
         max_tries = len(self.data)  # Try every sample at most once
         for _ in range(max_tries):
             data = self.data[index]
@@ -132,6 +133,11 @@ class PianoRollAudioDataset(Dataset):
                 a matrix that contains MIDI velocity values at the frame locations
         """
         saved_data_path = audio_path.replace('.flac', '.pt').replace('.wav', '.pt')
+        cached = torch.load(saved_data_path)
+        if not all(k in cached for k in ['audio', 'label', 'velocity']):
+            print(f"Incomplete cache at {saved_data_path}, regenerating.")
+        else:
+            return cached
         if os.path.exists(saved_data_path) and self.refresh==False: # Check if .pt files exist, if so just load the files
             return torch.load(saved_data_path)
         # Otherwise, create the .pt files

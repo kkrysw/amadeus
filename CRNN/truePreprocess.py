@@ -1,72 +1,84 @@
 import os
-import torchaudio
-import numpy as np
-import soundfile as sf
 from glob import glob
 from tqdm import tqdm
+import numpy as np
+from pydub import AudioSegment
+from mido import MidiFile
+import sys
+from joblib import Parallel, delayed
+import multiprocessing
 
-SAMPLE_RATE = 16000
-N_MELS = 229
-HOP_LENGTH = 512
-MIN_MIDI = 21
-MAX_MIDI = 108
-N_NOTES = MAX_MIDI - MIN_MIDI + 1
+# === Auto-detect Google Drive path ===
+def resolve_maps_path():
+    gdrive_path = "/content/drive/MyDrive/Colab Notebooks/MAPS"
+    local_link = "/content/MAPS"
+    if not os.path.exists(local_link):
+        os.symlink(gdrive_path, local_link)
+    return local_link
 
-def load_tsv(tsv_path):
-    try:
-        midi = np.loadtxt(tsv_path, delimiter='\t', skiprows=1)
-        if midi.ndim == 1:
-            midi = np.expand_dims(midi, axis=0)
-        return midi
-    except Exception as e:
-        print(f"⚠ Failed to load {tsv_path}: {e}")
-        return np.zeros((0, 4))
+MAPS_PATH = resolve_maps_path()
+MIDI_PATH = os.path.join(MAPS_PATH, '*', 'MUS', '*.mid')
+OUTPUT_TSV_DIR = os.path.join(MAPS_PATH, 'tsvs')
 
-def create_label_matrix(midi_data, n_frames):
-    label = np.zeros((n_frames, N_NOTES), dtype=np.uint8)
-    for onset, offset, note, vel in midi_data:
-        if note < MIN_MIDI or note > MAX_MIDI:
-            continue
-        idx = int(note) - MIN_MIDI
-        start = int(onset * SAMPLE_RATE // HOP_LENGTH)
-        end = int(offset * SAMPLE_RATE // HOP_LENGTH)
-        label[start:end, idx] = 1
-    return label
+# === MIDI to TSV ===
+def parse_midi(path):
+    midi = MidiFile(path)
+    time = 0
+    sustain = False
+    events = []
+    for message in midi:
+        time += message.time
+        if message.type == 'control_change' and message.control == 64:
+            sustain = message.value >= 64
+            event_type = 'sustain_on' if sustain else 'sustain_off'
+            events.append(dict(index=len(events), time=time, type=event_type, note=None, velocity=0))
+        if 'note' in message.type:
+            velocity = message.velocity if message.type == 'note_on' else 0
+            events.append(dict(index=len(events), time=time, type='note', note=message.note, velocity=velocity, sustain=sustain))
 
-def process_pair(audio_path, tsv_path, out_dir):
-    audio, sr = sf.read(audio_path)
-    if sr != SAMPLE_RATE:
-        print(f"Resampling {audio_path} from {sr}Hz to {SAMPLE_RATE}Hz")
-        audio = torchaudio.functional.resample(torch.tensor(audio), sr, SAMPLE_RATE).numpy()
-
-    mel_spec = torchaudio.transforms.MelSpectrogram(
-        sample_rate=SAMPLE_RATE,
-        n_fft=2048,
-        hop_length=HOP_LENGTH,
-        n_mels=N_MELS
-    )(torch.tensor(audio).float()).numpy()
-
-    mel_spec = mel_spec.T  # [time, n_mels]
-    midi_data = load_tsv(tsv_path)
-    label = create_label_matrix(midi_data, mel_spec.shape[0])
-
-    save_path = os.path.join(out_dir, os.path.basename(audio_path).replace('.flac', '.npz'))
-    np.savez(save_path, mel=mel_spec, label=label)
-
-def main():
-    audio_paths = glob('/content/MAPS/**/*.flac', recursive=True)
-    out_dir = '/content/MAPS/npz'
-    os.makedirs(out_dir, exist_ok=True)
-
-    for audio_path in tqdm(audio_paths, desc="Processing MAPS audio"):
-        tsv_path = audio_path.replace('.flac', '.tsv')
-        if not os.path.exists(tsv_path):
-            print(f"Missing TSV for {audio_path}, skipping.")
+    notes = []
+    for i, onset in enumerate(events):
+        if onset['velocity'] == 0:
             continue
         try:
-            process_pair(audio_path, tsv_path, out_dir)
-        except Exception as e:
-            print(f"Error processing {audio_path}: {e}")
+            offset = next(n for n in events[i+1:] if n['note'] == onset['note'])
+            if offset['sustain']:
+                offset = next(n for n in events[offset['index']+1:] if n['type'] == 'sustain_off')
+            notes.append((onset['time'], offset['time'], onset['note'], onset['velocity']))
+        except StopIteration:
+            continue
 
-if __name__ == "__main__":
-    main()
+    return np.array(notes)
+
+def process_midi(in_file, out_file):
+    midi_data = parse_midi(in_file)
+    np.savetxt(out_file, midi_data, fmt='%.6f', delimiter='\t', header='onset\toffset\tnote\tvelocity')
+
+def collect_files():
+    midis = glob(MIDI_PATH)
+    if not os.path.exists(OUTPUT_TSV_DIR):
+        os.makedirs(OUTPUT_TSV_DIR)
+    return [(m, os.path.join(OUTPUT_TSV_DIR, os.path.basename(m).replace('.mid', '.tsv'))) for m in midis]
+
+midi_jobs = collect_files()
+Parallel(n_jobs=multiprocessing.cpu_count())(delayed(process_midi)(in_f, out_f) for in_f, out_f in midi_jobs)
+
+print(f"MIDI -> TSV complete: {len(midi_jobs)} files written to {OUTPUT_TSV_DIR}")
+
+# === WAV to FLAC ===
+wavs = glob(os.path.join(MAPS_PATH, '**', '*.wav'), recursive=True)
+for wav in tqdm(wavs, desc="Converting WAV to FLAC"):
+    sound = AudioSegment.from_wav(wav)
+    sound = sound.set_frame_rate(16000).set_channels(1)
+    sound.export(wav.replace('.wav', '.flac'), format='flac')
+
+print(f"WAV -> FLAC conversion complete: {len(wavs)} files processed")
+
+# === Dummy TSV for unmatched WAV ===
+for wav in tqdm(wavs, desc="Generating dummy TSVs"):
+    tsv_path = wav.replace('.wav', '.tsv')
+    if not os.path.exists(tsv_path):
+        notes = [(60, 60.5, 60, 64)] * 5
+        np.savetxt(tsv_path, notes, fmt='%.6f', delimiter='\t', header='onset\toffset\tnote\tvelocity')
+
+print("Dummy TSVs generated where missing")

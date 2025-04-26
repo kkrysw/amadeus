@@ -44,7 +44,7 @@ class PianoMAPSDataset(Dataset):
         y = librosa.resample(y, orig_sr=self.sr, target_sr=self.sr)
         
         # Compute Mel-spectrogram
-        mel = librosa.feature.melspectrogram(y, sr=self.sr, n_mels=self.n_mels)
+        mel = librosa.feature.melspectrogram(y=y, sr=self.sr, n_mels=self.n_mels)
         mel = librosa.power_to_db(mel, ref=np.max)
 
         # Load label

@@ -53,11 +53,15 @@ class PianoMAPSDataset(Dataset):
 
         labels = np.loadtxt(tsv_path, skiprows=1, delimiter='\t')
 
-        # Ensure labels is always 2D
-        if labels.ndim == 1:
-            labels = np.expand_dims(labels, axis=0)
+        # Handle completely empty TSV files
+        if labels.size == 0:
+            labels = np.zeros((0, 4))  # No notes at all, empty array of shape [0,4]
 
-        # Build piano roll (binary frame labels)
+        # Handle single-note TSV files (make sure 2D)
+        elif labels.ndim == 1:
+            labels = np.expand_dims(labels, axis=0)
+                # Build piano roll (binary frame labels)
+                
         time_steps = mel.shape[1]
         frame_labels = np.zeros((88, time_steps), dtype=np.float32)
 

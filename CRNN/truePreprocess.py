@@ -1,26 +1,25 @@
 import os
+import numpy as np
 from glob import glob
 from tqdm import tqdm
-import numpy as np
 from pydub import AudioSegment
 from mido import MidiFile
-import sys
 from joblib import Parallel, delayed
 import multiprocessing
+import shutil
 
-# === Auto-detect Google Drive path ===
-def resolve_maps_path():
-    gdrive_path = "/content/drive/MyDrive/Colab Notebooks/MAPS"
-    local_link = "/content/MAPS"
-    if not os.path.exists(local_link):
-        os.symlink(gdrive_path, local_link)
-    return local_link
+# === Parameters ===
+BASE_DIR = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS"
+TEMP_DIR = os.path.join(BASE_DIR, "temp_extract")
+OUTPUT_DIR = os.path.join(BASE_DIR, "newMAP")
+OUTPUT_AUDIO_DIR = os.path.join(OUTPUT_DIR, "audio")
+OUTPUT_TSV_DIR = os.path.join(OUTPUT_DIR, "tsvs")
 
-MAPS_PATH = resolve_maps_path()
-MIDI_PATH = os.path.join(MAPS_PATH, '*', 'MUS', '*.mid')
-OUTPUT_TSV_DIR = os.path.join(MAPS_PATH, 'tsvs')
+os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(OUTPUT_AUDIO_DIR, exist_ok=True)
+os.makedirs(OUTPUT_TSV_DIR, exist_ok=True)
 
-# === MIDI to TSV ===
+# === MIDI to TSV Functions ===
 def parse_midi(path):
     midi = MidiFile(path)
     time = 0
@@ -28,57 +27,76 @@ def parse_midi(path):
     events = []
     for message in midi:
         time += message.time
-        if message.type == 'control_change' and message.control == 64:
+        if message.type == 'control_change' and message.control == 64 and (message.value >= 64) != sustain:
             sustain = message.value >= 64
-            event_type = 'sustain_on' if sustain else 'sustain_off'
-            events.append(dict(index=len(events), time=time, type=event_type, note=None, velocity=0))
+            event = dict(index=len(events), time=time, type='sustain_on' if sustain else 'sustain_off', note=None, velocity=0)
+            events.append(event)
         if 'note' in message.type:
             velocity = message.velocity if message.type == 'note_on' else 0
-            events.append(dict(index=len(events), time=time, type='note', note=message.note, velocity=velocity, sustain=sustain))
-
+            event = dict(index=len(events), time=time, type='note', note=message.note, velocity=velocity, sustain=sustain)
+            events.append(event)
     notes = []
     for i, onset in enumerate(events):
         if onset['velocity'] == 0:
             continue
         try:
-            offset = next(n for n in events[i+1:] if n['note'] == onset['note'])
-            if offset['sustain']:
-                offset = next(n for n in events[offset['index']+1:] if n['type'] == 'sustain_off')
-            notes.append((onset['time'], offset['time'], onset['note'], onset['velocity']))
-        except StopIteration:
+            offset = next(n for n in events[i+1:] if n['note'] == onset['note'] or n is events[-1])
+            if offset['sustain'] and offset is not events[-1]:
+                offset = next(n for n in events[offset['index']+1:] if n['type'] == 'sustain_off' or (n.get('note') == offset['note']) or n is events[-1])
+            note = (onset['time'], offset['time'], onset['note'], onset['velocity'])
+            notes.append(note)
+        except Exception as e:
+            print(f"Skipping note due to error: {e}")
             continue
-
     return np.array(notes)
 
-def process_midi(in_file, out_file):
-    midi_data = parse_midi(in_file)
-    np.savetxt(out_file, midi_data, fmt='%.6f', delimiter='\t', header='onset\toffset\tnote\tvelocity')
+def save_tsv(input_file, output_file):
+    try:
+        data = parse_midi(input_file)
+        if data.size > 0:
+            np.savetxt(output_file, data, fmt='%.6f', delimiter='\t', header='onset\toffset\tnote\tvelocity')
+    except Exception as e:
+        print(f"Error parsing {input_file}: {e}")
 
-def collect_files():
-    midis = glob(MIDI_PATH)
-    if not os.path.exists(OUTPUT_TSV_DIR):
-        os.makedirs(OUTPUT_TSV_DIR)
-    return [(m, os.path.join(OUTPUT_TSV_DIR, os.path.basename(m).replace('.mid', '.tsv'))) for m in midis]
+# === Find all MIDI and WAV files recursively ===
+midi_files = glob(os.path.join(BASE_DIR, '**', '*.mid'), recursive=True)
+wav_files = glob(os.path.join(BASE_DIR, '**', '*.wav'), recursive=True)
 
-midi_jobs = collect_files()
-Parallel(n_jobs=multiprocessing.cpu_count())(delayed(process_midi)(in_f, out_f) for in_f, out_f in midi_jobs)
+print(f"Found {len(midi_files)} MIDI files.")
+print(f"Found {len(wav_files)} WAV files.")
 
-print(f"MIDI -> TSV complete: {len(midi_jobs)} files written to {OUTPUT_TSV_DIR}")
+# === Process MIDI to TSV ===
+def process_midi_file(midi_path):
+    output_path = os.path.join(OUTPUT_TSV_DIR, os.path.basename(midi_path).replace('.mid', '.tsv'))
+    save_tsv(midi_path, output_path)
 
-# === WAV to FLAC ===
-wavs = glob(os.path.join(MAPS_PATH, '**', '*.wav'), recursive=True)
-for wav in tqdm(wavs, desc="Converting WAV to FLAC"):
-    sound = AudioSegment.from_wav(wav)
-    sound = sound.set_frame_rate(16000).set_channels(1)
-    sound.export(wav.replace('.wav', '.flac'), format='flac')
+Parallel(n_jobs=multiprocessing.cpu_count())(
+    delayed(process_midi_file)(m) for m in midi_files
+)
 
-print(f"WAV -> FLAC conversion complete: {len(wavs)} files processed")
+# === Convert WAV to FLAC ===
+for wav_path in tqdm(wav_files, desc="Converting WAV to FLAC"):
+    try:
+        sound = AudioSegment.from_wav(wav_path)
+        sound = sound.set_frame_rate(16000).set_channels(1)
+        flac_name = os.path.basename(wav_path).replace('.wav', '.flac')
+        output_flac_path = os.path.join(OUTPUT_AUDIO_DIR, flac_name)
+        sound.export(output_flac_path, format='flac')
+    except Exception as e:
+        print(f"Failed to convert {wav_path}: {e}")
 
-# === Dummy TSV for unmatched WAV ===
-for wav in tqdm(wavs, desc="Generating dummy TSVs"):
-    tsv_path = wav.replace('.wav', '.tsv')
-    if not os.path.exists(tsv_path):
-        notes = [(60, 60.5, 60, 64)] * 5
-        np.savetxt(tsv_path, notes, fmt='%.6f', delimiter='\t', header='onset\toffset\tnote\tvelocity')
+# === Match TSVs to FLACs ===
+for tsv_path in glob(os.path.join(OUTPUT_TSV_DIR, "*.tsv")):
+    base_name = os.path.basename(tsv_path).replace('.tsv', '')
+    flac_match = os.path.join(OUTPUT_AUDIO_DIR, base_name + ".flac")
+    if os.path.exists(flac_match):
+        shutil.move(tsv_path, os.path.join(OUTPUT_AUDIO_DIR, os.path.basename(tsv_path)))
+    else:
+        print(f"No matching FLAC found for {base_name}, keeping TSV in output folder.")
 
-print("Dummy TSVs generated where missing")
+print("Preprocessing complete. All TSVs and FLACs are ready in the 'newMAP' folder.")
+
+# === Zip final output ===
+shutil.make_archive(os.path.join(BASE_DIR, "newMAP"), 'zip', OUTPUT_DIR)
+
+print("newMAP.zip created successfully.")

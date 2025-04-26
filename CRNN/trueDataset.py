@@ -47,7 +47,7 @@ class PianoMAPSDataset(Dataset):
         mel = librosa.feature.melspectrogram(y=y, sr=self.sr, n_mels=self.n_mels)
         mel = librosa.power_to_db(mel, ref=np.max)
 
-        # Load label
+        # Load labels
         if not os.path.exists(tsv_path):
             raise FileNotFoundError(f"Missing label file: {tsv_path}")
 
@@ -64,9 +64,21 @@ class PianoMAPSDataset(Dataset):
             note_idx = int(note) - 21  # MIDI note 21 = A0
             if 0 <= note_idx < 88:
                 active = (frame_times >= onset) & (frame_times <= offset)
-                frame_labels[note_idx, active] = velocity / 127.0  # Normalize velocity
+                frame_labels[note_idx, active] = velocity / 127.0
+
+        # --- RANDOM CROP TO FIXED LENGTH ---
+        max_frames = 512  # or 1024 if memory allows
+        if time_steps > max_frames:
+            start_frame = np.random.randint(0, time_steps - max_frames)
+            mel = mel[:, start_frame:start_frame + max_frames]
+            frame_labels = frame_labels[:, start_frame:start_frame + max_frames]
+        else:
+            pad_size = max_frames - time_steps
+            mel = np.pad(mel, ((0,0), (0,pad_size)), mode='constant')
+            frame_labels = np.pad(frame_labels, ((0,0), (0,pad_size)), mode='constant')
 
         mel = torch.tensor(mel, dtype=torch.float32)
         label = torch.tensor(frame_labels, dtype=torch.float32)
 
         return mel, label
+

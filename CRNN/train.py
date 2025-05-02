@@ -35,6 +35,45 @@ def compute_frame_metrics(preds, targets, threshold=0.5):
         "frame_accuracy": acc
     }
 
+def extract_notes(piano_roll, onset_thresh=0.5, offset_thresh=0.5):
+    notes = []
+    for pitch in range(piano_roll.shape[1]):  # 88 notes
+        active = piano_roll[:, pitch] > onset_thresh
+        changes = active[:-1] != active[1:]
+        indices = torch.where(changes)[0].cpu().numpy()
+        if len(indices) % 2 != 0:
+            indices = indices[:-1]  # ensure complete onset-offset pairs
+        for i in range(0, len(indices), 2):
+            onset = indices[i]
+            offset = indices[i+1] if i+1 < len(indices) else onset + 1
+            notes.append((onset, offset, pitch))
+    return notes
+
+def match_notes(pred_notes, target_notes, onset_tol=2):
+    matched = 0
+    used = set()
+    for pred in pred_notes:
+        for i, tgt in enumerate(target_notes):
+            if i in used:
+                continue
+            # Compare onset within tolerance and same pitch
+            if abs(pred[0] - tgt[0]) <= onset_tol and pred[2] == tgt[2]:
+                matched += 1
+                used.add(i)
+                break
+    return matched
+
+def compute_note_metrics(pred_roll, target_roll, tol_frames=2):
+    pred_notes = extract_notes(pred_roll)
+    target_notes = extract_notes(target_roll)
+    matched = match_notes(pred_notes, target_notes, onset_tol=tol_frames)
+
+    P = matched / max(len(pred_notes), 1)
+    R = matched / max(len(target_notes), 1)
+    F1 = 2 * P * R / max(P + R, 1e-8)
+    return {"note_precision": P, "note_recall": R, "note_f1": F1}
+
+
 # --- Argument Parser ---
 parser = argparse.ArgumentParser(description="Train CRNN on MAPS Dataset")
 parser.add_argument('--data_dir', type=str, required=True, help='Path to audio + tsv files')
@@ -112,8 +151,32 @@ for epoch in range(1, args.num_epochs + 1):
     targets = torch.cat(all_targets, dim=0)
     metrics = compute_frame_metrics(preds, targets)
 
+    # Note-based metrics (onset only, full note)
+    note_preds = (preds > 0.5).float()
+    note_targets = (targets > 0.5).float()
+
+    note_metrics_list = [
+        compute_note_metrics(pred.cpu(), tgt.cpu())
+        for pred, tgt in zip(note_preds, note_targets)
+    ]
+
+    note_prec = sum([m['note_precision'] for m in note_metrics_list]) / len(note_metrics_list)
+    note_rec  = sum([m['note_recall'] for m in note_metrics_list]) / len(note_metrics_list)
+    note_f1   = sum([m['note_f1'] for m in note_metrics_list]) / len(note_metrics_list)
+
+    metrics.update({
+        "note_precision": note_prec,
+        "note_recall": note_rec,
+        "note_f1": note_f1
+    })
+
+
     print(f"Epoch {epoch} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
-    print(f"Frame F1: {metrics['frame_f1']:.4f} | Precision: {metrics['frame_precision']:.4f} \n Recall: {metrics['frame_recall']:.4f} | Accuracy: {metrics['frame_accuracy']:.4f}")
+    print(f"Frame F1: {metrics['frame_f1']:.4f} | Precision: {metrics['frame_precision']:.4f} "
+      f"| Recall: {metrics['frame_recall']:.4f} | Accuracy: {metrics['frame_accuracy']:.4f}")
+    print(f"Note  F1: {metrics['note_f1']:.4f} | Precision: {metrics['note_precision']:.4f} "
+      f"| Recall: {metrics['note_recall']:.4f}")
+
 
     # Save best model
     if avg_val_loss < best_val_loss:

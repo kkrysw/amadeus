@@ -53,7 +53,7 @@ for epoch in range(1, args.num_epochs + 1):
     for mel, label in tqdm(train_loader, desc=f"Epoch {epoch} Training"):
         mel, label = mel.to(DEVICE), label.to(DEVICE)  # mel: [B, 1, 229, 512], label: [B, 512, 88]
         mel = mel.unsqueeze(1)
-        
+
         optimizer.zero_grad()
         frame_out, onset_out = model(mel)  # [B, 512, 88] each
 
@@ -73,6 +73,8 @@ for epoch in range(1, args.num_epochs + 1):
     with torch.no_grad():
         for mel, label in tqdm(val_loader, desc=f"Epoch {epoch} Validation"):
             mel, label = mel.to(DEVICE), label.to(DEVICE)
+            mel = mel.unsqueeze(1) 
+            
             frame_out, onset_out = model(mel)
 
             frame_loss = criterion(frame_out, label.clamp(0, 1))

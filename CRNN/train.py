@@ -6,6 +6,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import csv
+
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
 from torch.utils.tensorboard import SummaryWriter
@@ -51,7 +52,7 @@ for epoch in range(1, args.num_epochs + 1):
 
     for mel, label in tqdm(train_loader, desc=f"Epoch {epoch} Training"):
         mel, label = mel.to(DEVICE), label.to(DEVICE)
-        #mel = mel.unsqueeze(1)  # [B, 1, n_mels, time]
+        mel = mel.unsqueeze(1)  # [B, 1, 229, 512]
 
         optimizer.zero_grad()
         frame_out, onset_out = model(mel)
@@ -72,7 +73,7 @@ for epoch in range(1, args.num_epochs + 1):
     with torch.no_grad():
         for mel, label in tqdm(val_loader, desc=f"Epoch {epoch} Validation"):
             mel, label = mel.to(DEVICE), label.to(DEVICE)
-            mel = mel.unsqueeze(1)
+            mel = mel.unsqueeze(1)  # [B, 1, 229, 512]
 
             frame_out, onset_out = model(mel)
             frame_loss = criterion(frame_out, label.clamp(0, 1))
@@ -94,9 +95,9 @@ for epoch in range(1, args.num_epochs + 1):
     if epoch % args.save_every == 0:
         ckpt_path = os.path.join(args.save_dir, f'model_epoch_{epoch}.pt')
         torch.save(model.state_dict(), ckpt_path)
-        print(f"💾 Checkpoint saved at {ckpt_path}")
+        print(f"Checkpoint saved at {ckpt_path}")
 
-    # --- Log losses ---
+    # --- Log to TensorBoard + CSV ---
     writer.add_scalar('Loss/Train', avg_train_loss, epoch)
     writer.add_scalar('Loss/Val', avg_val_loss, epoch)
     with open(csv_path, 'a', newline='') as f:

@@ -15,7 +15,7 @@ import pickle
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
 
-def compute_frame_metrics(preds, targets, threshold=0.3):
+def compute_frame_metrics(preds, targets, threshold=0.1):
     preds = torch.sigmoid(preds)
     preds_bin = (preds > threshold).cpu().numpy().astype(int)
     targets_bin = (targets > 0.5).cpu().numpy().astype(int)
@@ -59,18 +59,6 @@ def compute_note_metrics(pred_roll, target_roll, fs=100):
     pred_notes = extract_notes(pred_roll, fs)
     target_notes = extract_notes(target_roll, fs)
     if not pred_notes or not target_notes:
-        return {"note_onset_F1": 0.0, "note_offset_F1": 0.0}
-    ref_int, ref_pitch = zip(*target_notes)
-    est_int, est_pitch = zip(*pred_notes)
-    _, _, f_on, _ = mir_eval.transcription.precision_recall_f1_overlap(ref_int, ref_pitch, est_int, est_pitch, offset_ratio=None)
-    _, _, f_off, _ = mir_eval.transcription.precision_recall_f1_overlap(ref_int, ref_pitch, est_int, est_pitch, offset_ratio=0.2)
-    return {"note_onset_F1": f_on, "note_offset_F1": f_off}
-
-def compute_note_metrics(pred_roll, target_roll, fs=100):
-    pred_notes = extract_notes(pred_roll, fs)
-    target_notes = extract_notes(target_roll, fs)
-
-    if not pred_notes or not target_notes:
         return {
             "note_onset_F1": 0.0,
             "note_offset_F1": 0.0,
@@ -79,18 +67,10 @@ def compute_note_metrics(pred_roll, target_roll, fs=100):
             "num_pred": len(pred_notes),
             "num_target": len(target_notes)
         }
-
     ref_int, ref_pitch = zip(*target_notes)
     est_int, est_pitch = zip(*pred_notes)
-
-    # Onset-only match
-    p, r, f_on, matched_on = mir_eval.transcription.precision_recall_f1_overlap(
-        ref_int, ref_pitch, est_int, est_pitch, offset_ratio=None)
-
-    # Onset + Offset match
-    _, _, f_off, matched_off = mir_eval.transcription.precision_recall_f1_overlap(
-        ref_int, ref_pitch, est_int, est_pitch, offset_ratio=0.2)
-
+    _, _, f_on, matched_on = mir_eval.transcription.precision_recall_f1_overlap(ref_int, ref_pitch, est_int, est_pitch, offset_ratio=None)
+    _, _, f_off, matched_off = mir_eval.transcription.precision_recall_f1_overlap(ref_int, ref_pitch, est_int, est_pitch, offset_ratio=0.2)
     return {
         "note_onset_F1": f_on,
         "note_offset_F1": f_off,
@@ -99,8 +79,6 @@ def compute_note_metrics(pred_roll, target_roll, fs=100):
         "num_pred": len(pred_notes),
         "num_target": len(target_notes)
     }
-
-
 
 parser = argparse.ArgumentParser(description="Train CRNN on MAPS Dataset")
 parser.add_argument('--data_dir', type=str, required=True)
@@ -142,6 +120,7 @@ for epoch in range(1, args.num_epochs + 1):
         onset_loss = criterion(onset_out, (label > 0).float())
         loss = frame_loss + 5.0 * onset_loss
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         train_loss += loss.item()
 
@@ -159,6 +138,7 @@ for epoch in range(1, args.num_epochs + 1):
             val_loss += (frame_loss + 5.0 * onset_loss).item()
             all_preds.append(torch.sigmoid(frame_out))
             all_targets.append(label)
+            print("Sample sigmoid(frame_out):", torch.sigmoid(frame_out[0, :, :]).cpu().numpy())
 
     avg_val_loss = val_loss / len(val_loader)
     scheduler.step()
@@ -168,12 +148,11 @@ for epoch in range(1, args.num_epochs + 1):
     print(f"Pred logits: min={preds.min().item():.4f}, max={preds.max().item():.4f}, mean={preds.mean().item():.4f}")
     metrics = compute_frame_metrics(preds, targets)
 
-    preds_bin = (preds > 0.3).float()
+    preds_bin = (preds > 0.1).float()
     targets_bin = (targets > 0.5).float()
 
     onset_f1s, offset_f1s = [], []
-    matched_on, matched_off = [], []
-    total_pred, total_tgt = [], []
+    matched_on, matched_off, total_pred, total_tgt = [], [], [], []
 
     for pred, target in zip(preds_bin, targets_bin):
         m = compute_note_metrics(pred, target)
@@ -184,16 +163,15 @@ for epoch in range(1, args.num_epochs + 1):
         total_pred.append(m['num_pred'])
         total_tgt.append(m['num_target'])
 
-    print(f"Matched Onsets     : {sum(matched_on)} / {sum(total_tgt)}")
-    print(f"Matched Offsets    : {sum(matched_off)} / {sum(total_tgt)}")
-
     mean_onset_f1 = np.mean(onset_f1s)
     mean_offset_f1 = np.mean(offset_f1s)
     std_onset_f1 = np.std(onset_f1s)
     std_offset_f1 = np.std(offset_f1s)
 
-    print(f"Note Onset F1     : {mean_onset_f1*100:.2f} ± {std_onset_f1*100:.2f}")
-    print(f"Note Offset F1    : {mean_offset_f1*100:.2f} ± {std_offset_f1*100:.2f}")
+    print(f"Matched Onsets     : {sum(matched_on)} / {sum(total_tgt)}")
+    print(f"Matched Offsets    : {sum(matched_off)} / {sum(total_tgt)}")
+    print(f"Note Onset F1      : {mean_onset_f1*100:.2f} ± {std_onset_f1*100:.2f}")
+    print(f"Note Offset F1     : {mean_offset_f1*100:.2f} ± {std_offset_f1*100:.2f}")
 
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss

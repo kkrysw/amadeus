@@ -51,11 +51,11 @@ for epoch in range(1, args.num_epochs + 1):
     train_loss = 0.0
 
     for mel, label in tqdm(train_loader, desc=f"Epoch {epoch} Training"):
-        mel, label = mel.to(DEVICE), label.to(DEVICE)  # mel: [B, 1, 229, 512], label: [B, 512, 88]
-        #mel = mel.unsqueeze(1)
+        mel, label = mel.to(DEVICE), label.to(DEVICE)  # mel: [B, time, n_mels]
+        mel = mel.transpose(1, 2).unsqueeze(1)         # → [B, 1, n_mels, time]
 
         optimizer.zero_grad()
-        frame_out, onset_out = model(mel)  # [B, 512, 88] each
+        frame_out, onset_out = model(mel)              # [B, time, 88] each
 
         frame_loss = criterion(frame_out, label.clamp(0, 1))
         onset_loss = criterion(onset_out, (label > 0).float())
@@ -65,6 +65,7 @@ for epoch in range(1, args.num_epochs + 1):
         optimizer.step()
         train_loss += loss.item()
 
+
     avg_train_loss = train_loss / len(train_loader)
 
     # --- Validation ---
@@ -73,10 +74,9 @@ for epoch in range(1, args.num_epochs + 1):
     with torch.no_grad():
         for mel, label in tqdm(val_loader, desc=f"Epoch {epoch} Validation"):
             mel, label = mel.to(DEVICE), label.to(DEVICE)
-            #mel = mel.unsqueeze(1) 
-            
-            frame_out, onset_out = model(mel)
+            mel = mel.transpose(1, 2).unsqueeze(1)  # same fix
 
+            frame_out, onset_out = model(mel)
             frame_loss = criterion(frame_out, label.clamp(0, 1))
             onset_loss = criterion(onset_out, (label > 0).float())
             val_loss += (frame_loss + onset_loss).item()

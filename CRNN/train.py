@@ -6,10 +6,34 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import csv
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from torch.utils.tensorboard import SummaryWriter
 
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
+
+def compute_frame_metrics(preds, targets, threshold=0.5):
+    preds_bin = (preds > threshold).cpu().numpy().astype(int)
+    targets_bin = (targets > 0.5).cpu().numpy().astype(int)
+
+    precision_list, recall_list, f1_list, acc_list = [], [], [], []
+    for p, t in zip(preds_bin, targets_bin):
+        p_flat = p.flatten()
+        t_flat = t.flatten()
+        prec, rec, f1, _ = precision_recall_fscore_support(t_flat, p_flat, average='binary', zero_division=0)
+        acc = accuracy_score(t_flat, p_flat)
+
+        precision_list.append(prec)
+        recall_list.append(rec)
+        f1_list.append(f1)
+        acc_list.append(acc)
+
+    return {
+        "frame_precision": sum(precision_list)/len(precision_list),
+        "frame_recall": sum(recall_list)/len(recall_list),
+        "frame_f1": sum(f1_list)/len(f1_list),
+        "frame_accuracy": sum(acc_list)/len(acc_list)
+    }
 
 # --- Argument Parser ---
 parser = argparse.ArgumentParser(description="Train CRNN on MAPS Dataset")
@@ -41,7 +65,7 @@ criterion = nn.BCEWithLogitsLoss()
 # --- CSV Logging ---
 csv_path = os.path.join(args.save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:
-    csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss'])
+    csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss', 'F1', 'Precision', 'Recall', 'Accuracy'])
 
 best_val_loss = float('inf')
 
@@ -51,15 +75,13 @@ for epoch in range(1, args.num_epochs + 1):
     train_loss = 0.0
 
     for mel, label in tqdm(train_loader, desc=f"Epoch {epoch} Training"):
-        mel, label = mel.to(DEVICE), label.to(DEVICE)  # mel: [B, 1, 229, 512]
+        mel, label = mel.to(DEVICE), label.to(DEVICE)  # [B, 229, 512], [B, 512, 88]
+        frame_out, onset_out = model(mel)              # [B, time, 88]
 
         optimizer.zero_grad()
-        frame_out, onset_out = model(mel)              # [B, time, 88] each
-
         frame_loss = criterion(frame_out, label.clamp(0, 1))
         onset_loss = criterion(onset_out, (label > 0).float())
         loss = frame_loss + onset_loss
-
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
@@ -69,37 +91,57 @@ for epoch in range(1, args.num_epochs + 1):
     # --- Validation ---
     model.eval()
     val_loss = 0.0
+    all_preds, all_targets = [], []
     with torch.no_grad():
         for mel, label in tqdm(val_loader, desc=f"Epoch {epoch} Validation"):
             mel, label = mel.to(DEVICE), label.to(DEVICE)
-
             frame_out, onset_out = model(mel)
+
             frame_loss = criterion(frame_out, label.clamp(0, 1))
             onset_loss = criterion(onset_out, (label > 0).float())
             val_loss += (frame_loss + onset_loss).item()
 
+            all_preds.append(torch.sigmoid(frame_out))
+            all_targets.append(label)
+
     avg_val_loss = val_loss / len(val_loader)
     scheduler.step()
 
-    print(f"Epoch {epoch} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+    preds = torch.cat(all_preds, dim=0)
+    targets = torch.cat(all_targets, dim=0)
+    metrics = compute_frame_metrics(preds, targets)
 
-    # --- Save Best Model ---
+    print(f"Epoch {epoch} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+    print(f"Frame F1: {metrics['frame_f1']:.4f} | Precision: {metrics['frame_precision']:.4f} \n Recall: {metrics['frame_recall']:.4f} | Accuracy: {metrics['frame_accuracy']:.4f}")
+
+    # Save best model
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
         torch.save(model.state_dict(), os.path.join(args.save_dir, 'best_model.pt'))
         print(f"New best model saved at epoch {epoch}")
 
-    # --- Save Checkpoint ---
     if epoch % args.save_every == 0:
         ckpt_path = os.path.join(args.save_dir, f'model_epoch_{epoch}.pt')
         torch.save(model.state_dict(), ckpt_path)
         print(f"Checkpoint saved at {ckpt_path}")
 
-    # --- Log losses ---
     writer.add_scalar('Loss/Train', avg_train_loss, epoch)
     writer.add_scalar('Loss/Val', avg_val_loss, epoch)
+    writer.add_scalar('Metrics/F1', metrics['frame_f1'], epoch)
+    writer.add_scalar('Metrics/Precision', metrics['frame_precision'], epoch)
+    writer.add_scalar('Metrics/Recall', metrics['frame_recall'], epoch)
+    writer.add_scalar('Metrics/Accuracy', metrics['frame_accuracy'], epoch)
+
     with open(csv_path, 'a', newline='') as f:
-        csv.writer(f).writerow([epoch, avg_train_loss, avg_val_loss])
+        csv.writer(f).writerow([
+            epoch,
+            avg_train_loss,
+            avg_val_loss,
+            metrics['frame_f1'],
+            metrics['frame_precision'],
+            metrics['frame_recall'],
+            metrics['frame_accuracy']
+        ])
 
 print("Training complete.")
 writer.close()

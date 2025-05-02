@@ -51,7 +51,7 @@ for epoch in range(1, args.num_epochs + 1):
 
     for mel, label in tqdm(train_loader, desc=f"Epoch {epoch} Training"):
         mel, label = mel.to(DEVICE), label.to(DEVICE)
-        mel = mel.unsqueeze(1)  # [B, 1, n_mels, time]
+        #mel = mel.unsqueeze(1)  # [B, 1, n_mels, time]
 
         optimizer.zero_grad()
         frame_out, onset_out = model(mel)

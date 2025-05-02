@@ -6,34 +6,37 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import csv
-from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, precision_recall_fscore_support
 from torch.utils.tensorboard import SummaryWriter
 
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
 
 
-def compute_frame_metrics(preds, targets, threshold=0.5):
-    # Apply sigmoid + thresholding
+def compute_frame_metrics(preds, targets, threshold=0.3):
+    preds = torch.sigmoid(preds)  # ensure probabilities
     preds_bin = (preds > threshold).cpu().numpy().astype(int)
     targets_bin = (targets > 0.5).cpu().numpy().astype(int)
 
-    # Flatten to compute metrics over all frames and notes
-    p_flat = preds_bin.reshape(-1, 88)
-    t_flat = targets_bin.reshape(-1, 88)
+    precision_list, recall_list, f1_list, acc_list = [], [], [], []
+    for p, t in zip(preds_bin, targets_bin):
+        p_flat = p.flatten()
+        t_flat = t.flatten()
+        prec, rec, f1, _ = precision_recall_fscore_support(t_flat, p_flat, average='binary', zero_division=0)
+        acc = accuracy_score(t_flat, p_flat)
 
-    # Use micro-average (preferred for multi-label binary)
-    precision = precision_score(t_flat, p_flat, average='micro', zero_division=0)
-    recall = recall_score(t_flat, p_flat, average='micro', zero_division=0)
-    f1 = f1_score(t_flat, p_flat, average='micro', zero_division=0)
-    acc = accuracy_score(t_flat, p_flat)
+        precision_list.append(prec)
+        recall_list.append(rec)
+        f1_list.append(f1)
+        acc_list.append(acc)
 
     return {
-        "frame_precision": precision,
-        "frame_recall": recall,
-        "frame_f1": f1,
-        "frame_accuracy": acc
+        "frame_precision": sum(precision_list)/len(precision_list),
+        "frame_recall": sum(recall_list)/len(recall_list),
+        "frame_f1": sum(f1_list)/len(f1_list),
+        "frame_accuracy": sum(acc_list)/len(acc_list)
     }
+
 
 def extract_notes(piano_roll, onset_thresh=0.5, offset_thresh=0.5):
     notes = []
@@ -149,6 +152,8 @@ for epoch in range(1, args.num_epochs + 1):
 
     preds = torch.cat(all_preds, dim=0)
     targets = torch.cat(all_targets, dim=0)
+    
+    print(f"Pred logits: min={preds.min().item():.4f}, max={preds.max().item():.4f}, mean={preds.mean().item():.4f}")
     metrics = compute_frame_metrics(preds, targets)
 
     # Note-based metrics (onset only, full note)

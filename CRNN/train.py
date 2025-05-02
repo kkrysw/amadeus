@@ -8,13 +8,15 @@ from tqdm import tqdm
 import csv
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, precision_recall_fscore_support
 from torch.utils.tensorboard import SummaryWriter
+import mir_eval
+import numpy as np
+import pickle
 
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
 
-
 def compute_frame_metrics(preds, targets, threshold=0.3):
-    preds = torch.sigmoid(preds)  # ensure probabilities
+    preds = torch.sigmoid(preds)
     preds_bin = (preds > threshold).cpu().numpy().astype(int)
     targets_bin = (targets > 0.5).cpu().numpy().astype(int)
 
@@ -24,7 +26,6 @@ def compute_frame_metrics(preds, targets, threshold=0.3):
         t_flat = t.flatten()
         prec, rec, f1, _ = precision_recall_fscore_support(t_flat, p_flat, average='binary', zero_division=0)
         acc = accuracy_score(t_flat, p_flat)
-
         precision_list.append(prec)
         recall_list.append(rec)
         f1_list.append(f1)
@@ -37,101 +38,115 @@ def compute_frame_metrics(preds, targets, threshold=0.3):
         "frame_accuracy": sum(acc_list)/len(acc_list)
     }
 
-
-def extract_notes(piano_roll, onset_thresh=0.5, offset_thresh=0.5):
+def extract_notes(piano_roll, fs=100):
     notes = []
-    for pitch in range(piano_roll.shape[1]):  # 88 notes
-        active = piano_roll[:, pitch] > onset_thresh
-        changes = active[:-1] != active[1:]
-        indices = torch.where(changes)[0].cpu().numpy()
-        if len(indices) % 2 != 0:
-            indices = indices[:-1]  # ensure complete onset-offset pairs
-        for i in range(0, len(indices), 2):
-            onset = indices[i]
-            offset = indices[i+1] if i+1 < len(indices) else onset + 1
-            notes.append((onset, offset, pitch))
+    piano_roll = piano_roll.cpu().numpy()
+    for pitch in range(piano_roll.shape[1]):
+        active = piano_roll[:, pitch] > 0.5
+        changes = np.diff(active.astype(int), prepend=0)
+        onsets = np.where(changes == 1)[0]
+        offsets = np.where(changes == -1)[0]
+        if len(offsets) < len(onsets):
+            offsets = np.append(offsets, piano_roll.shape[0] - 1)
+        for on, off in zip(onsets, offsets):
+            onset_time = on / fs
+            offset_time = off / fs
+            midi_pitch = pitch + 21
+            notes.append(((onset_time, offset_time), midi_pitch))
     return notes
 
-def match_notes(pred_notes, target_notes, onset_tol=2):
-    matched = 0
-    used = set()
-    for pred in pred_notes:
-        for i, tgt in enumerate(target_notes):
-            if i in used:
-                continue
-            # Compare onset within tolerance and same pitch
-            if abs(pred[0] - tgt[0]) <= onset_tol and pred[2] == tgt[2]:
-                matched += 1
-                used.add(i)
-                break
-    return matched
+def compute_note_metrics(pred_roll, target_roll, fs=100):
+    pred_notes = extract_notes(pred_roll, fs)
+    target_notes = extract_notes(target_roll, fs)
+    if not pred_notes or not target_notes:
+        return {"note_onset_F1": 0.0, "note_offset_F1": 0.0}
+    ref_int, ref_pitch = zip(*target_notes)
+    est_int, est_pitch = zip(*pred_notes)
+    _, _, f_on, _ = mir_eval.transcription.precision_recall_f1_overlap(ref_int, ref_pitch, est_int, est_pitch, offset_ratio=None)
+    _, _, f_off, _ = mir_eval.transcription.precision_recall_f1_overlap(ref_int, ref_pitch, est_int, est_pitch, offset_ratio=0.2)
+    return {"note_onset_F1": f_on, "note_offset_F1": f_off}
 
-def compute_note_metrics(pred_roll, target_roll, tol_frames=2):
-    pred_notes = extract_notes(pred_roll)
-    target_notes = extract_notes(target_roll)
-    matched = match_notes(pred_notes, target_notes, onset_tol=tol_frames)
+def compute_note_metrics(pred_roll, target_roll, fs=100):
+    pred_notes = extract_notes(pred_roll, fs)
+    target_notes = extract_notes(target_roll, fs)
 
-    P = matched / max(len(pred_notes), 1)
-    R = matched / max(len(target_notes), 1)
-    F1 = 2 * P * R / max(P + R, 1e-8)
-    return {"note_precision": P, "note_recall": R, "note_f1": F1}
+    if not pred_notes or not target_notes:
+        return {
+            "note_onset_F1": 0.0,
+            "note_offset_F1": 0.0,
+            "matched_onset": 0,
+            "matched_offset": 0,
+            "num_pred": len(pred_notes),
+            "num_target": len(target_notes)
+        }
+
+    ref_int, ref_pitch = zip(*target_notes)
+    est_int, est_pitch = zip(*pred_notes)
+
+    # Onset-only match
+    p, r, f_on, matched_on = mir_eval.transcription.precision_recall_f1_overlap(
+        ref_int, ref_pitch, est_int, est_pitch, offset_ratio=None)
+
+    # Onset + Offset match
+    _, _, f_off, matched_off = mir_eval.transcription.precision_recall_f1_overlap(
+        ref_int, ref_pitch, est_int, est_pitch, offset_ratio=0.2)
+
+    return {
+        "note_onset_F1": f_on,
+        "note_offset_F1": f_off,
+        "matched_onset": matched_on,
+        "matched_offset": matched_off,
+        "num_pred": len(pred_notes),
+        "num_target": len(target_notes)
+    }
 
 
-# --- Argument Parser ---
+
 parser = argparse.ArgumentParser(description="Train CRNN on MAPS Dataset")
-parser.add_argument('--data_dir', type=str, required=True, help='Path to audio + tsv files')
+parser.add_argument('--data_dir', type=str, required=True)
 parser.add_argument('--batch_size', type=int, default=8)
 parser.add_argument('--learning_rate', type=float, default=1e-3)
 parser.add_argument('--num_epochs', type=int, default=50)
 parser.add_argument('--save_dir', type=str, default='./weights')
-parser.add_argument('--save_every', type=int, default=5, help='Save checkpoint every N epochs')
+parser.add_argument('--save_every', type=int, default=5)
 args = parser.parse_args()
 
-# --- Config ---
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 os.makedirs(args.save_dir, exist_ok=True)
 writer = SummaryWriter(log_dir=args.save_dir)
 
-# --- Load Data ---
 train_dataset = PianoMAPSDataset(args.data_dir, split='train')
 val_dataset = PianoMAPSDataset(args.data_dir, split='val')
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
 
-# --- Model + Optimizer ---
 model = CRNN().to(DEVICE)
 optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 criterion = nn.BCEWithLogitsLoss()
 
-# --- CSV Logging ---
 csv_path = os.path.join(args.save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:
-    csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss',
-                             'F1', 'Precision', 'Recall', 'Accuracy'])
+    csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss', 'F1', 'Precision', 'Recall', 'Accuracy'])
 
 best_val_loss = float('inf')
 
-# --- Training Loop ---
 for epoch in range(1, args.num_epochs + 1):
     model.train()
     train_loss = 0.0
-
     for mel, label in tqdm(train_loader, desc=f"Epoch {epoch} Training"):
-        mel, label = mel.to(DEVICE), label.to(DEVICE)  # [B, 229, 512], [B, 512, 88]
-        frame_out, onset_out = model(mel)              # [B, time, 88]
-
+        mel, label = mel.to(DEVICE), label.to(DEVICE)
+        frame_out, onset_out = model(mel)
         optimizer.zero_grad()
-        frame_loss = criterion(frame_out, label.clamp(0, 1))
+        frame_loss = criterion(frame_out, (label > 0).float())
         onset_loss = criterion(onset_out, (label > 0).float())
-        loss = frame_loss + onset_loss
+        loss = frame_loss + 5.0 * onset_loss
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
 
     avg_train_loss = train_loss / len(train_loader)
 
-    # --- Validation ---
     model.eval()
     val_loss = 0.0
     all_preds, all_targets = [], []
@@ -139,11 +154,9 @@ for epoch in range(1, args.num_epochs + 1):
         for mel, label in tqdm(val_loader, desc=f"Epoch {epoch} Validation"):
             mel, label = mel.to(DEVICE), label.to(DEVICE)
             frame_out, onset_out = model(mel)
-
-            frame_loss = criterion(frame_out, label.clamp(0, 1))
+            frame_loss = criterion(frame_out, (label > 0).float())
             onset_loss = criterion(onset_out, (label > 0).float())
-            val_loss += (frame_loss + onset_loss).item()
-
+            val_loss += (frame_loss + 5.0 * onset_loss).item()
             all_preds.append(torch.sigmoid(frame_out))
             all_targets.append(label)
 
@@ -152,38 +165,36 @@ for epoch in range(1, args.num_epochs + 1):
 
     preds = torch.cat(all_preds, dim=0)
     targets = torch.cat(all_targets, dim=0)
-    
     print(f"Pred logits: min={preds.min().item():.4f}, max={preds.max().item():.4f}, mean={preds.mean().item():.4f}")
     metrics = compute_frame_metrics(preds, targets)
 
-    # Note-based metrics (onset only, full note)
-    note_preds = (preds > 0.5).float()
-    note_targets = (targets > 0.5).float()
+    preds_bin = (preds > 0.3).float()
+    targets_bin = (targets > 0.5).float()
 
-    note_metrics_list = [
-        compute_note_metrics(pred.cpu(), tgt.cpu())
-        for pred, tgt in zip(note_preds, note_targets)
-    ]
+    onset_f1s, offset_f1s = [], []
+    matched_on, matched_off = [], []
+    total_pred, total_tgt = [], []
 
-    note_prec = sum([m['note_precision'] for m in note_metrics_list]) / len(note_metrics_list)
-    note_rec  = sum([m['note_recall'] for m in note_metrics_list]) / len(note_metrics_list)
-    note_f1   = sum([m['note_f1'] for m in note_metrics_list]) / len(note_metrics_list)
+    for pred, target in zip(preds_bin, targets_bin):
+        m = compute_note_metrics(pred, target)
+        onset_f1s.append(m['note_onset_F1'])
+        offset_f1s.append(m['note_offset_F1'])
+        matched_on.append(m['matched_onset'])
+        matched_off.append(m['matched_offset'])
+        total_pred.append(m['num_pred'])
+        total_tgt.append(m['num_target'])
 
-    metrics.update({
-        "note_precision": note_prec,
-        "note_recall": note_rec,
-        "note_f1": note_f1
-    })
+    print(f"Matched Onsets     : {sum(matched_on)} / {sum(total_tgt)}")
+    print(f"Matched Offsets    : {sum(matched_off)} / {sum(total_tgt)}")
 
+    mean_onset_f1 = np.mean(onset_f1s)
+    mean_offset_f1 = np.mean(offset_f1s)
+    std_onset_f1 = np.std(onset_f1s)
+    std_offset_f1 = np.std(offset_f1s)
 
-    print(f"Epoch {epoch} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
-    print(f"Frame F1: {metrics['frame_f1']:.4f} | Precision: {metrics['frame_precision']:.4f} "
-      f"| Recall: {metrics['frame_recall']:.4f} | Accuracy: {metrics['frame_accuracy']:.4f}")
-    print(f"Note  F1: {metrics['note_f1']:.4f} | Precision: {metrics['note_precision']:.4f} "
-      f"| Recall: {metrics['note_recall']:.4f}")
+    print(f"Note Onset F1     : {mean_onset_f1*100:.2f} ± {std_onset_f1*100:.2f}")
+    print(f"Note Offset F1    : {mean_offset_f1*100:.2f} ± {std_offset_f1*100:.2f}")
 
-
-    # Save best model
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
         torch.save(model.state_dict(), os.path.join(args.save_dir, 'best_model.pt'))

@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import csv
-from sklearn.metrics import precision_recall_fscore_support, accuracy_score
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from torch.utils.tensorboard import SummaryWriter
 
 from model.model import CRNN

@@ -118,8 +118,8 @@ for epoch in range(1, args.num_epochs + 1):
         print("Label max:", label.max().item(), "min:", label.min().item(), "mean:", label.mean().item())
         frame_out, onset_out = model(mel)
         optimizer.zero_grad()
-        frame_loss = criterion(frame_out, (label > 0).float())
-        onset_loss = criterion(onset_out, (label > 0).float())
+        frame_loss = criterion(frame_out, label)
+        onset_loss = criterion(onset_out, label)
         loss = frame_loss + 5.0 * onset_loss
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)

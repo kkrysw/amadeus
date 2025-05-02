@@ -68,7 +68,8 @@ class PianoMAPSDataset(Dataset):
             note_idx = int(note) - 21
             if 0 <= note_idx < 88:
                 active = (frame_times >= onset) & (frame_times <= offset)
-                frame_labels[note_idx, active] = velocity / 127.0
+                frame_labels[note_idx, active] = 1.0  # Binary: note is active
+
 
         max_frames = 512
         if time_steps > max_frames:

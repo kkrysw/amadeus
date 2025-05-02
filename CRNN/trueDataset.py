@@ -51,7 +51,7 @@ class PianoMAPSDataset(Dataset):
         if not os.path.exists(tsv_path):
             raise FileNotFoundError(f"Missing label file: {tsv_path}")
 
-        labels = np.loadtxt(tsv_path, skiprows=1, delimiter='\\t')
+        labels = np.loadtxt(tsv_path, skiprows=1, delimiter='\t')
 
         if labels.size == 0:
             labels = np.zeros((0, 4))

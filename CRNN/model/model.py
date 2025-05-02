@@ -38,7 +38,7 @@ class CRNN(nn.Module):
 
     def forward(self, x):
         # x: [Batch, n_mels, Time]
-        x = x.unsqueeze(1)  # [Batch, 1, n_mels, Time]
+        #x = x.unsqueeze(1)  # [Batch, 1, n_mels, Time]
         x = self.cnn(x)     # [Batch, Channels, Time, 1]
         x = x.squeeze(3)    # [Batch, Channels, Time]
         x = x.permute(0, 2, 1)  # [Batch, Time, Channels]

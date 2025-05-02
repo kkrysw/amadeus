@@ -83,4 +83,4 @@ class PianoMAPSDataset(Dataset):
         mel = torch.tensor(mel, dtype=torch.float32)
         label = torch.tensor(frame_labels, dtype=torch.float32)
 
-        return mel, label.transpose(0, 1)
+        return mel.unsqueeze(0), label.transpose(0, 1)

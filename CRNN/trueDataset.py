@@ -42,9 +42,12 @@ class PianoMAPSDataset(Dataset):
         # Load audio
         y, _ = sf.read(audio_path)
         y = librosa.resample(y, orig_sr=self.sr, target_sr=self.sr)
-        
+
+        # Set fixed hop_length
+        hop_length = 160  # ~10ms frame hop at 16kHz
+
         # Compute Mel-spectrogram
-        mel = librosa.feature.melspectrogram(y=y, sr=self.sr, n_mels=self.n_mels)
+        mel = librosa.feature.melspectrogram(y=y, sr=self.sr, hop_length=hop_length, n_mels=self.n_mels)
         mel = librosa.power_to_db(mel, ref=np.max)
 
         # Load labels
@@ -52,7 +55,6 @@ class PianoMAPSDataset(Dataset):
             raise FileNotFoundError(f"Missing label file: {tsv_path}")
 
         labels = np.loadtxt(tsv_path, skiprows=1, delimiter='\t')
-
         if labels.size == 0:
             labels = np.zeros((0, 4))
         elif labels.ndim == 1:
@@ -61,15 +63,14 @@ class PianoMAPSDataset(Dataset):
         time_steps = mel.shape[1]
         frame_labels = np.zeros((88, time_steps), dtype=np.float32)
 
-        duration = len(y) / self.sr
-        frame_times = np.linspace(0, duration, num=time_steps)
+        # FIXED: use hop_length to compute frame times
+        frame_times = np.arange(time_steps) * hop_length / self.sr
 
         for onset, offset, note, velocity in labels:
             note_idx = int(note) - 21
             if 0 <= note_idx < 88:
                 active = (frame_times >= onset) & (frame_times <= offset)
-                frame_labels[note_idx, active] = 1.0  # Binary: note is active
-
+                frame_labels[note_idx, active] = 1.0  # Binary labels
 
         max_frames = 512
         if time_steps > max_frames:
@@ -78,10 +79,10 @@ class PianoMAPSDataset(Dataset):
             frame_labels = frame_labels[:, start_frame:start_frame + max_frames]
         else:
             pad_size = max_frames - time_steps
-            mel = np.pad(mel, ((0,0), (0,pad_size)), mode='constant')
-            frame_labels = np.pad(frame_labels, ((0,0), (0,pad_size)), mode='constant')
+            mel = np.pad(mel, ((0, 0), (0, pad_size)), mode='constant')
+            frame_labels = np.pad(frame_labels, ((0, 0), (0, pad_size)), mode='constant')
 
         mel = torch.tensor(mel, dtype=torch.float32)
         label = torch.tensor(frame_labels, dtype=torch.float32)
 
-        return mel.unsqueeze(0), label.transpose(0, 1)
+        return mel.unsqueeze(0), label.transpose(0, 1)  # Output: [1, 229, 512], [512, 88]

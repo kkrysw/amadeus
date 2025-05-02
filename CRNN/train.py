@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 import mir_eval
 import numpy as np
 import pickle
+import matplotlib.pyplot as plt
 
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
@@ -114,6 +115,7 @@ for epoch in range(1, args.num_epochs + 1):
     train_loss = 0.0
     for mel, label in tqdm(train_loader, desc=f"Epoch {epoch} Training"):
         mel, label = mel.to(DEVICE), label.to(DEVICE)
+        print("Label max:", label.max().item(), "min:", label.min().item(), "mean:", label.mean().item())
         frame_out, onset_out = model(mel)
         optimizer.zero_grad()
         frame_loss = criterion(frame_out, (label > 0).float())
@@ -138,7 +140,19 @@ for epoch in range(1, args.num_epochs + 1):
             val_loss += (frame_loss + 5.0 * onset_loss).item()
             all_preds.append(torch.sigmoid(frame_out))
             all_targets.append(label)
-            print("Sample sigmoid(frame_out):", torch.sigmoid(frame_out[0, :, :]).cpu().numpy())
+
+            if epoch == 1:
+                pred_plot = torch.sigmoid(frame_out[0]).detach().cpu().numpy()
+                label_plot = label[0].detach().cpu().numpy()
+                plt.figure(figsize=(12, 4))
+                plt.subplot(1, 2, 1)
+                plt.imshow(pred_plot.T, aspect='auto', origin='lower')
+                plt.title('Predicted')
+                plt.subplot(1, 2, 2)
+                plt.imshow(label_plot.T, aspect='auto', origin='lower')
+                plt.title('Label')
+                plt.savefig(f"{args.save_dir}/epoch_{epoch}_vis.png")
+                plt.close()
 
     avg_val_loss = val_loss / len(val_loader)
     scheduler.step()

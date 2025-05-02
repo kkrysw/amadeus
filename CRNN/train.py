@@ -12,27 +12,27 @@ from torch.utils.tensorboard import SummaryWriter
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
 
+
 def compute_frame_metrics(preds, targets, threshold=0.5):
+    # Apply sigmoid + thresholding
     preds_bin = (preds > threshold).cpu().numpy().astype(int)
     targets_bin = (targets > 0.5).cpu().numpy().astype(int)
 
-    precision_list, recall_list, f1_list, acc_list = [], [], [], []
-    for p, t in zip(preds_bin, targets_bin):
-        p_flat = p.flatten()
-        t_flat = t.flatten()
-        prec, rec, f1, _ = precision_recall_fscore_support(t_flat, p_flat, average='binary', zero_division=0)
-        acc = accuracy_score(t_flat, p_flat)
+    # Flatten to compute metrics over all frames and notes
+    p_flat = preds_bin.reshape(-1, 88)
+    t_flat = targets_bin.reshape(-1, 88)
 
-        precision_list.append(prec)
-        recall_list.append(rec)
-        f1_list.append(f1)
-        acc_list.append(acc)
+    # Use micro-average (preferred for multi-label binary)
+    precision = precision_score(t_flat, p_flat, average='micro', zero_division=0)
+    recall = recall_score(t_flat, p_flat, average='micro', zero_division=0)
+    f1 = f1_score(t_flat, p_flat, average='micro', zero_division=0)
+    acc = accuracy_score(t_flat, p_flat)
 
     return {
-        "frame_precision": sum(precision_list)/len(precision_list),
-        "frame_recall": sum(recall_list)/len(recall_list),
-        "frame_f1": sum(f1_list)/len(f1_list),
-        "frame_accuracy": sum(acc_list)/len(acc_list)
+        "frame_precision": precision,
+        "frame_recall": recall,
+        "frame_f1": f1,
+        "frame_accuracy": acc
     }
 
 # --- Argument Parser ---
@@ -65,7 +65,8 @@ criterion = nn.BCEWithLogitsLoss()
 # --- CSV Logging ---
 csv_path = os.path.join(args.save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:
-    csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss', 'F1', 'Precision', 'Recall', 'Accuracy'])
+    csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss',
+                             'F1', 'Precision', 'Recall', 'Accuracy'])
 
 best_val_loss = float('inf')
 

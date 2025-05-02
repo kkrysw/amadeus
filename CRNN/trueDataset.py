@@ -6,16 +6,15 @@ import librosa
 import soundfile as sf
 
 class PianoMAPSDataset(Dataset):
-    def __init__(self, data_dir, split='train', split_ratio=(0.8, 0.1, 0.1), seed=42, sr=16000, n_mels=229, max_frames=512):
+    def __init__(self, data_dir, split='train', split_ratio=(0.8, 0.1, 0.1), seed=42, sr=16000, n_mels=229):
         self.data_dir = data_dir
-        self.sr = sr
-        self.n_mels = n_mels
-        self.max_frames = max_frames
-
         self.audio_paths = sorted([f for f in os.listdir(data_dir) if f.endswith('.flac')])
+
+        # Consistent shuffling
         np.random.seed(seed)
         np.random.shuffle(self.audio_paths)
 
+        # Train/val/test split
         n_total = len(self.audio_paths)
         n_train = int(split_ratio[0] * n_total)
         n_val = int(split_ratio[1] * n_total)
@@ -23,11 +22,14 @@ class PianoMAPSDataset(Dataset):
         if split == 'train':
             self.audio_paths = self.audio_paths[:n_train]
         elif split == 'val':
-            self.audio_paths = self.audio_paths[n_train:n_train + n_val]
+            self.audio_paths = self.audio_paths[n_train:n_train+n_val]
         elif split == 'test':
-            self.audio_paths = self.audio_paths[n_train + n_val:]
+            self.audio_paths = self.audio_paths[n_train+n_val:]
         else:
             raise ValueError("split must be 'train', 'val', or 'test'")
+
+        self.sr = sr
+        self.n_mels = n_mels
 
     def __len__(self):
         return len(self.audio_paths)
@@ -37,23 +39,20 @@ class PianoMAPSDataset(Dataset):
         audio_path = os.path.join(self.data_dir, audio_filename)
         tsv_path = audio_path.replace('.flac', '.tsv')
 
-        # Load and validate audio
+        # Load audio
         y, _ = sf.read(audio_path)
-        if y.ndim > 1:
-            y = y.mean(axis=1)
-        if y.size == 0 or np.allclose(y, 0):
-            raise ValueError(f"Corrupted or silent audio file: {audio_path}")
-
-        # Compute mel spectrogram
+        y = librosa.resample(y, orig_sr=self.sr, target_sr=self.sr)
+        
+        # Compute Mel-spectrogram
         mel = librosa.feature.melspectrogram(y=y, sr=self.sr, n_mels=self.n_mels)
         mel = librosa.power_to_db(mel, ref=np.max)
-        mel = (mel + 80.0) / 80.0  # Normalize to [0, 1]
 
-        # Load and process labels
+        # Load labels
         if not os.path.exists(tsv_path):
             raise FileNotFoundError(f"Missing label file: {tsv_path}")
 
-        labels = np.loadtxt(tsv_path, skiprows=1, delimiter='\t')
+        labels = np.loadtxt(tsv_path, skiprows=1, delimiter='\\t')
+
         if labels.size == 0:
             labels = np.zeros((0, 4))
         elif labels.ndim == 1:
@@ -68,20 +67,20 @@ class PianoMAPSDataset(Dataset):
         for onset, offset, note, velocity in labels:
             note_idx = int(note) - 21
             if 0 <= note_idx < 88:
-                active = (frame_times >= onset) & (frame_times < offset)
+                active = (frame_times >= onset) & (frame_times <= offset)
                 frame_labels[note_idx, active] = velocity / 127.0
 
-        # Random crop or pad
-        if time_steps > self.max_frames:
-            start = np.random.randint(0, time_steps - self.max_frames)
-            mel = mel[:, start:start + self.max_frames]
-            frame_labels = frame_labels[:, start:start + self.max_frames]
+        max_frames = 512
+        if time_steps > max_frames:
+            start_frame = np.random.randint(0, time_steps - max_frames)
+            mel = mel[:, start_frame:start_frame + max_frames]
+            frame_labels = frame_labels[:, start_frame:start_frame + max_frames]
         else:
-            pad = self.max_frames - time_steps
-            mel = np.pad(mel, ((0, 0), (0, pad)), mode='constant')
-            frame_labels = np.pad(frame_labels, ((0, 0), (0, pad)), mode='constant')
+            pad_size = max_frames - time_steps
+            mel = np.pad(mel, ((0,0), (0,pad_size)), mode='constant')
+            frame_labels = np.pad(frame_labels, ((0,0), (0,pad_size)), mode='constant')
 
         mel = torch.tensor(mel, dtype=torch.float32)
         label = torch.tensor(frame_labels, dtype=torch.float32)
 
-        return mel, label.transpose(0, 1)  # Return [time, 88]
+        return mel, label.transpose(0, 1)

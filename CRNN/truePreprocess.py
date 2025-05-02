@@ -23,32 +23,21 @@ os.makedirs(OUTPUT_TSV_DIR, exist_ok=True)
 def parse_midi(path):
     midi = MidiFile(path)
     time = 0
-    sustain = False
-    events = []
-    for message in midi:
-        time += message.time
-        if message.type == 'control_change' and message.control == 64 and (message.value >= 64) != sustain:
-            sustain = message.value >= 64
-            event = dict(index=len(events), time=time, type='sustain_on' if sustain else 'sustain_off', note=None, velocity=0)
-            events.append(event)
-        if 'note' in message.type:
-            velocity = message.velocity if message.type == 'note_on' else 0
-            event = dict(index=len(events), time=time, type='note', note=message.note, velocity=velocity, sustain=sustain)
-            events.append(event)
+    ongoing_notes = {}
     notes = []
-    for i, onset in enumerate(events):
-        if onset['velocity'] == 0:
-            continue
-        try:
-            offset = next(n for n in events[i+1:] if n['note'] == onset['note'] or n is events[-1])
-            if offset['sustain'] and offset is not events[-1]:
-                offset = next(n for n in events[offset['index']+1:] if n['type'] == 'sustain_off' or (n.get('note') == offset['note']) or n is events[-1])
-            note = (onset['time'], offset['time'], onset['note'], onset['velocity'])
-            notes.append(note)
-        except Exception as e:
-            print(f"Skipping note due to error: {e}")
-            continue
+
+    for msg in midi:
+        time += msg.time
+        if msg.type == 'note_on' and msg.velocity > 0:
+            ongoing_notes[msg.note] = (time, msg.velocity)
+        elif msg.type in ['note_off', 'note_on'] and msg.velocity == 0:
+            if msg.note in ongoing_notes:
+                onset, velocity = ongoing_notes.pop(msg.note)
+                offset = time
+                notes.append((onset, offset, msg.note, velocity))
+
     return np.array(notes)
+
 
 def save_tsv(input_file, output_file):
     try:

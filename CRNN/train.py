@@ -6,9 +6,10 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import csv
+from torch.utils.tensorboard import SummaryWriter
+
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
-from torch.utils.tensorboard import SummaryWriter
 
 # --- Argument Parser ---
 parser = argparse.ArgumentParser(description="Train CRNN on MAPS Dataset")
@@ -50,11 +51,10 @@ for epoch in range(1, args.num_epochs + 1):
     train_loss = 0.0
 
     for mel, label in tqdm(train_loader, desc=f"Epoch {epoch} Training"):
-        mel, label = mel.to(DEVICE), label.to(DEVICE)
-        # No unsqueeze here! mel should already be [B, 1, 229, 512]
+        mel, label = mel.to(DEVICE), label.to(DEVICE)  # mel: [B, 1, 229, 512], label: [B, 512, 88]
 
         optimizer.zero_grad()
-        frame_out, onset_out = model(mel)
+        frame_out, onset_out = model(mel)  # [B, 512, 88] each
 
         frame_loss = criterion(frame_out, label.clamp(0, 1))
         onset_loss = criterion(onset_out, (label > 0).float())
@@ -72,8 +72,8 @@ for epoch in range(1, args.num_epochs + 1):
     with torch.no_grad():
         for mel, label in tqdm(val_loader, desc=f"Epoch {epoch} Validation"):
             mel, label = mel.to(DEVICE), label.to(DEVICE)
-
             frame_out, onset_out = model(mel)
+
             frame_loss = criterion(frame_out, label.clamp(0, 1))
             onset_loss = criterion(onset_out, (label > 0).float())
             val_loss += (frame_loss + onset_loss).item()
@@ -93,7 +93,7 @@ for epoch in range(1, args.num_epochs + 1):
     if epoch % args.save_every == 0:
         ckpt_path = os.path.join(args.save_dir, f'model_epoch_{epoch}.pt')
         torch.save(model.state_dict(), ckpt_path)
-        print(f"💾 Checkpoint saved at {ckpt_path}")
+        print(f"Checkpoint saved at {ckpt_path}")
 
     # --- Log losses ---
     writer.add_scalar('Loss/Train', avg_train_loss, epoch)

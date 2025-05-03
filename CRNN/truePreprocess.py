@@ -45,14 +45,14 @@ def save_tsv(input_file, output_file):
         if data.size > 0:
             np.savetxt(output_file, data, fmt='%.6f', delimiter='\t', header='onset\toffset\tnote\tvelocity')
     except Exception as e:
-        print(f"Error parsing {input_file}: {e}")
+        print(f"[MIDI ERROR] Failed to parse {input_file}: {e}")
 
 # === Find all MIDI and WAV files recursively ===
 midi_files = glob(os.path.join(BASE_DIR, '**', '*.mid'), recursive=True)
 wav_files = glob(os.path.join(BASE_DIR, '**', '*.wav'), recursive=True)
 
-print(f"Found {len(midi_files)} MIDI files.")
-print(f"Found {len(wav_files)} WAV files.")
+print(f"[INFO] Found {len(midi_files)} MIDI files.")
+print(f"[INFO] Found {len(wav_files)} WAV files.")
 
 # === Process MIDI to TSV ===
 def process_midi_file(midi_path):
@@ -60,7 +60,7 @@ def process_midi_file(midi_path):
     save_tsv(midi_path, output_path)
 
 Parallel(n_jobs=multiprocessing.cpu_count())(
-    delayed(process_midi_file)(m) for m in midi_files
+    delayed(process_midi_file)(m) for m in tqdm(midi_files, desc="Processing MIDI files")
 )
 
 # === Convert WAV to FLAC ===
@@ -72,7 +72,7 @@ for wav_path in tqdm(wav_files, desc="Converting WAV to FLAC"):
         output_flac_path = os.path.join(OUTPUT_AUDIO_DIR, flac_name)
         sound.export(output_flac_path, format='flac')
     except Exception as e:
-        print(f"Failed to convert {wav_path}: {e}")
+        print(f"[WAV ERROR] Failed to convert {wav_path}: {e}")
 
 # === Match TSVs to FLACs ===
 for tsv_path in glob(os.path.join(OUTPUT_TSV_DIR, "*.tsv")):
@@ -81,11 +81,8 @@ for tsv_path in glob(os.path.join(OUTPUT_TSV_DIR, "*.tsv")):
     if os.path.exists(flac_match):
         shutil.move(tsv_path, os.path.join(OUTPUT_AUDIO_DIR, os.path.basename(tsv_path)))
     else:
-        print(f"No matching FLAC found for {base_name}, keeping TSV in output folder.")
-
-print("Preprocessing complete. All TSVs and FLACs are ready in the 'newMAP' folder.")
+        print(f"[WARN] No matching FLAC found for: {base_name}. TSV kept in tsvs/ folder.")
 
 # === Zip final output ===
 shutil.make_archive(os.path.join(BASE_DIR, "newMAP"), 'zip', OUTPUT_DIR)
-
-print("newMAP.zip created successfully.")
+print("[DONE] newMAP.zip created successfully.")

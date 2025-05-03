@@ -63,14 +63,14 @@ class PianoMAPSDataset(Dataset):
         time_steps = mel.shape[1]
         frame_labels = np.zeros((88, time_steps), dtype=np.float32)
 
-        # FIXED: use hop_length to compute frame times
-        frame_times = np.arange(time_steps) * hop_length / self.sr
-
         for onset, offset, note, velocity in labels:
             note_idx = int(note) - 21
             if 0 <= note_idx < 88:
-                active = (frame_times >= onset) & (frame_times <= offset)
-                frame_labels[note_idx, active] = 1.0  # Binary labels
+                on_idx = int(onset * self.sr / hop_length)
+                off_idx = int(offset * self.sr / hop_length) + 1  # include offset frame
+                if on_idx < time_steps:
+                    frame_labels[note_idx, on_idx:min(off_idx, time_steps)] = 1.0
+
 
         max_frames = 512
         if time_steps > max_frames:

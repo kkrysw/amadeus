@@ -21,20 +21,20 @@ os.makedirs(OUTPUT_TSV_DIR, exist_ok=True)
 
 # === MIDI to TSV Functions ===
 def parse_midi(path):
+    from miditoolkit import MidiFile
+
     midi = MidiFile(path)
-    time = 0
-    ongoing_notes = {}
     notes = []
 
-    for msg in midi:
-        time += msg.time
-        if msg.type == 'note_on' and msg.velocity > 0:
-            ongoing_notes[msg.note] = (time, msg.velocity)
-        elif msg.type in ['note_off', 'note_on'] and msg.velocity == 0:
-            if msg.note in ongoing_notes:
-                onset, velocity = ongoing_notes.pop(msg.note)
-                offset = time
-                notes.append((onset, offset, msg.note, velocity))
+    for note in midi.instruments[0].notes:
+        onset = note.start / midi.ticks_per_beat
+        offset = note.end / midi.ticks_per_beat
+        pitch = note.pitch
+        velocity = note.velocity
+        notes.append((onset, offset, pitch, velocity))
+
+    if len(notes) == 0:
+        print(f"[DEBUG] No notes in {os.path.basename(path)}")
 
     return np.array(notes)
 

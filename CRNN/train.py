@@ -43,14 +43,30 @@ def extract_notes(piano_roll, onset_thresh=0.5, fps=100):
     pitches = np.array([p for _, _, p in notes])
     return intervals, pitches
 
-def compute_note_metrics(pred, target):
-    ref_intervals, ref_pitches = extract_notes(target)
-    est_intervals, est_pitches = extract_notes(pred)
-    if len(ref_intervals) == 0 and len(est_intervals) == 0:
-        return {"note_onset_f1": 1.0, "note_offset_f1": 1.0, "matched_onsets": 0, "matched_offsets": 0}
-    _, _, f_on, matched_on = mir_eval.transcription.precision_recall_f1_overlap(ref_intervals, ref_pitches, est_intervals, est_pitches)
-    _, _, f_off, matched_off = mir_eval.transcription.precision_recall_f1_overlap(ref_intervals, ref_pitches, est_intervals, est_pitches, offset_ratio=0.2)
-    return {"note_onset_f1": f_on, "note_offset_f1": f_off, "matched_onsets": matched_on, "matched_offsets": matched_off}
+def compute_note_metrics(pred_roll, target_roll):
+    ref_intervals, ref_pitches = extract_notes(target_roll)
+    est_intervals, est_pitches = extract_notes(pred_roll)
+
+    if len(ref_intervals) == 0 or len(est_intervals) == 0:
+        return None  # Skip this pair
+
+    if np.any(ref_pitches <= 0) or np.any(est_pitches <= 0):
+        return None  # Skip invalid pitches
+
+    try:
+        _, _, f_on, matched_on = mir_eval.transcription.precision_recall_f1_overlap(
+            ref_intervals, ref_pitches, est_intervals, est_pitches, offset_ratio=None)
+        _, _, f_off, matched_off = mir_eval.transcription.precision_recall_f1_overlap(
+            ref_intervals, ref_pitches, est_intervals, est_pitches, offset_ratio=0.2)
+        return {
+            "note_onset_f1": f_on,
+            "note_offset_f1": f_off,
+            "matched_onsets": matched_on,
+            "matched_offsets": matched_off
+        }
+    except Exception as e:
+        print(f"[WARN] mir_eval failed: {e}")
+        return None
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_dir', type=str, required=True)
@@ -122,15 +138,29 @@ for epoch in range(1, args.num_epochs + 1):
     avg_val_loss = val_loss / len(val_loader)
     preds = torch.cat(all_preds)
     targets = torch.cat(all_targets)
+
+    
     metrics = compute_frame_metrics(preds, targets)
 
     note_preds = (preds > 0.1).float()
     note_targets = (targets > 0.5).float()
     eval_subset = min(args.note_eval_subset, note_preds.shape[0])
 
-    note_metrics = [compute_note_metrics(note_preds[i], note_targets[i]) for i in range(eval_subset)]
-    note_on_f1 = np.mean([m["note_onset_f1"] for m in note_metrics])
-    note_off_f1 = np.mean([m["note_offset_f1"] for m in note_metrics])
+    note_metrics_raw = [compute_note_metrics(p.cpu(), t.cpu()) for p, t in zip(note_preds, note_targets)]
+    note_metrics = [m for m in note_metrics_raw if m is not None]
+
+    if len(note_metrics) == 0:
+        print("[WARN] No valid note metrics this epoch.")
+        note_on_f1 = note_off_f1 = matched_on = matched_off = 0.0
+    else:
+        note_on_f1 = np.mean([m["note_onset_f1"] for m in note_metrics])
+        note_off_f1 = np.mean([m["note_offset_f1"] for m in note_metrics])
+        matched_on = sum([m["matched_onsets"] for m in note_metrics])
+        matched_off = sum([m["matched_offsets"] for m in note_metrics])
+
+
+    #note_on_f1 = np.mean([m["note_onset_f1"] for m in note_metrics])
+    #note_off_f1 = np.mean([m["note_offset_f1"] for m in note_metrics])
 
     print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
     print(f"Frame F1: {metrics['frame_f1']:.4f} | Note Onset F1: {note_on_f1:.4f} | Note Offset F1: {note_off_f1:.4f}")

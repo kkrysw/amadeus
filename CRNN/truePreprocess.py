@@ -9,7 +9,7 @@ import multiprocessing
 import shutil
 
 # === Parameters ===
-BASE_DIR = r"C:"
+BASE_DIR = r"C:\Users\kevin\Downloads\MAPS"
 TEMP_DIR = os.path.join(BASE_DIR, "temp_extract")
 OUTPUT_DIR = os.path.join(BASE_DIR, "newMAP")
 OUTPUT_AUDIO_DIR = os.path.join(OUTPUT_DIR, "audio")

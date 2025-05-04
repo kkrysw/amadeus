@@ -9,6 +9,7 @@ import csv
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from torch.utils.tensorboard import SummaryWriter
 import mir_eval
+import traceback
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -53,11 +54,12 @@ def extract_notes(piano_roll, onset_thresh=0.5, fps=100):
             onsets = onsets[:len(offsets)]
 
         for onset, offset in zip(onsets, offsets):
-            notes.append((onset.item(), offset.item(), pitch))
+            if offset > onset:
+                notes.append((onset.item(), offset.item(), pitch))
 
     if len(notes) == 0:
         return np.zeros((0, 2)), np.zeros((0,))
-
+    
     intervals = np.array([[on / fps, off / fps] for on, off, _ in notes])
     pitches = np.array([p for _, _, p in notes])
     return intervals, pitches
@@ -113,15 +115,40 @@ best_val_loss = float('inf')
 for epoch in range(1, args.num_epochs + 1):
     model.train()
     train_loss = 0.0
-    for mel, label in tqdm(train_loader, desc=f"Epoch {epoch} Training"):
-        mel, label = mel.to(DEVICE), label.to(DEVICE)
-        frame_out, onset_out = model(mel)
-        loss = criterion(frame_out, label) + 5.0 * criterion(onset_out, label)
-        optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
-        train_loss += loss.item()
+    try:
+        for batch_idx, (mel, label) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch} Training")):
+            mel, label = mel.to(DEVICE), label.to(DEVICE)
+
+            if torch.isnan(label).any():
+                print(f"[Warning] NaN detected in label batch at index {batch_idx}")
+            if label.max() == 0:
+                print(f"[Warning] Empty label batch at index {batch_idx}")
+
+            frame_out, onset_out = model(mel)
+            loss = criterion(frame_out, label) + 5.0 * criterion(onset_out, label)
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            train_loss += loss.item()
+
+            if batch_idx == 0:  # plot 1st batch for visual inspection
+                pred_plot = torch.sigmoid(frame_out[0]).detach().cpu().numpy()
+                label_plot = label[0].detach().cpu().numpy()
+                plt.figure(figsize=(12, 4))
+                plt.subplot(1, 2, 1)
+                plt.imshow(pred_plot.T, aspect='auto', origin='lower')
+                plt.title('Predicted')
+                plt.subplot(1, 2, 2)
+                plt.imshow(label_plot.T, aspect='auto', origin='lower')
+                plt.title('Label')
+                plt.savefig(f"{args.save_dir}/epoch_{epoch}_sample0_vis.png")
+                plt.close()
+
+    except Exception as e:
+        print(f"\n[Error] Exception in training loop at epoch {epoch}, batch {batch_idx}:")
+        traceback.print_exc()
+        break  # exit training early to inspect
 
     avg_train_loss = train_loss / len(train_loader)
 

@@ -9,36 +9,19 @@ import csv
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from torch.utils.tensorboard import SummaryWriter
 import mir_eval
-import traceback
 import numpy as np
 import matplotlib.pyplot as plt
+import traceback
 
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
 
 def compute_frame_metrics(preds, targets, threshold=0.1):
-    preds = torch.sigmoid(preds)
     preds_bin = (preds > threshold).cpu().numpy().astype(int)
     targets_bin = (targets > 0.5).cpu().numpy().astype(int)
-
-    precision_list, recall_list, f1_list, acc_list = [], [], [], []
-    for p, t in zip(preds_bin, targets_bin):
-        p_flat = p.flatten()
-        t_flat = t.flatten()
-        prec, rec, f1, _ = precision_recall_fscore_support(t_flat, p_flat, average='binary', zero_division=0)
-        acc = accuracy_score(t_flat, p_flat)
-        precision_list.append(prec)
-        recall_list.append(rec)
-        f1_list.append(f1)
-        acc_list.append(acc)
-
-    return {
-        "frame_precision": sum(precision_list)/len(precision_list),
-        "frame_recall": sum(recall_list)/len(recall_list),
-        "frame_f1": sum(f1_list)/len(f1_list),
-        "frame_accuracy": sum(acc_list)/len(acc_list)
-    }
-
+    p, r, f1, _ = precision_recall_fscore_support(targets_bin.flatten(), preds_bin.flatten(), average='binary', zero_division=0)
+    acc = accuracy_score(targets_bin.flatten(), preds_bin.flatten())
+    return {"frame_precision": p, "frame_recall": r, "frame_f1": f1, "frame_accuracy": acc}
 
 def extract_notes(piano_roll, onset_thresh=0.5, fps=100):
     notes = []
@@ -47,43 +30,27 @@ def extract_notes(piano_roll, onset_thresh=0.5, fps=100):
         changes = torch.diff(active.int())
         onsets = torch.where(changes == 1)[0]
         offsets = torch.where(changes == -1)[0]
-
         if len(onsets) > 0 and (len(offsets) == 0 or offsets[0] < onsets[0]):
             offsets = torch.cat([offsets, torch.tensor([piano_roll.shape[0]-1])])
         if len(onsets) > len(offsets):
             onsets = onsets[:len(offsets)]
-
         for onset, offset in zip(onsets, offsets):
             if offset > onset:
                 notes.append((onset.item(), offset.item(), pitch))
-
     if len(notes) == 0:
         return np.zeros((0, 2)), np.zeros((0,))
-    
     intervals = np.array([[on / fps, off / fps] for on, off, _ in notes])
     pitches = np.array([p for _, _, p in notes])
     return intervals, pitches
 
-
-def compute_note_metrics(pred_roll, target_roll):
-    ref_intervals, ref_pitches = extract_notes(target_roll)
-    est_intervals, est_pitches = extract_notes(pred_roll)
-
+def compute_note_metrics(pred, target):
+    ref_intervals, ref_pitches = extract_notes(target)
+    est_intervals, est_pitches = extract_notes(pred)
     if len(ref_intervals) == 0 and len(est_intervals) == 0:
         return {"note_onset_f1": 1.0, "note_offset_f1": 1.0, "matched_onsets": 0, "matched_offsets": 0}
-
-    _, _, f_on, matched_on = mir_eval.transcription.precision_recall_f1_overlap(
-        ref_intervals, ref_pitches, est_intervals, est_pitches, offset_ratio=None)
-    _, _, f_off, matched_off = mir_eval.transcription.precision_recall_f1_overlap(
-        ref_intervals, ref_pitches, est_intervals, est_pitches, offset_ratio=0.2)
-
-    return {
-        "note_onset_f1": f_on,
-        "note_offset_f1": f_off,
-        "matched_onsets": matched_on,
-        "matched_offsets": matched_off
-    }
-
+    _, _, f_on, matched_on = mir_eval.transcription.precision_recall_f1_overlap(ref_intervals, ref_pitches, est_intervals, est_pitches)
+    _, _, f_off, matched_off = mir_eval.transcription.precision_recall_f1_overlap(ref_intervals, ref_pitches, est_intervals, est_pitches, offset_ratio=0.2)
+    return {"note_onset_f1": f_on, "note_offset_f1": f_off, "matched_onsets": matched_on, "matched_offsets": matched_off}
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_dir', type=str, required=True)
@@ -92,19 +59,21 @@ parser.add_argument('--learning_rate', type=float, default=1e-3)
 parser.add_argument('--num_epochs', type=int, default=50)
 parser.add_argument('--save_dir', type=str, default='./weights')
 parser.add_argument('--save_every', type=int, default=5)
+parser.add_argument('--debug', action='store_true')
+parser.add_argument('--note_eval_subset', type=int, default=64)
 args = parser.parse_args()
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-os.makedirs(args.save_dir, exist_ok=True)
 writer = SummaryWriter(log_dir=args.save_dir)
-
-train_loader = DataLoader(PianoMAPSDataset(args.data_dir, 'train'), batch_size=args.batch_size, shuffle=True, num_workers=2)
-val_loader = DataLoader(PianoMAPSDataset(args.data_dir, 'val'), batch_size=args.batch_size, shuffle=False, num_workers=2)
+os.makedirs(args.save_dir, exist_ok=True)
 
 model = CRNN().to(DEVICE)
 optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 criterion = nn.BCEWithLogitsLoss()
+
+train_loader = DataLoader(PianoMAPSDataset(args.data_dir, 'train'), batch_size=args.batch_size, shuffle=True)
+val_loader = DataLoader(PianoMAPSDataset(args.data_dir, 'val'), batch_size=args.batch_size, shuffle=False)
 
 csv_path = os.path.join(args.save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:
@@ -116,14 +85,8 @@ for epoch in range(1, args.num_epochs + 1):
     model.train()
     train_loss = 0.0
     try:
-        for batch_idx, (mel, label) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch} Training")):
+        for batch_idx, (mel, label) in enumerate(tqdm(train_loader, desc=f"[Epoch {epoch}] Training")):
             mel, label = mel.to(DEVICE), label.to(DEVICE)
-
-            if torch.isnan(label).any():
-                print(f"[Warning] NaN detected in label batch at index {batch_idx}")
-            if label.max() == 0:
-                print(f"[Warning] Empty label batch at index {batch_idx}")
-
             frame_out, onset_out = model(mel)
             loss = criterion(frame_out, label) + 5.0 * criterion(onset_out, label)
             optimizer.zero_grad()
@@ -131,68 +94,55 @@ for epoch in range(1, args.num_epochs + 1):
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             train_loss += loss.item()
-
-            if batch_idx == 0:  # plot 1st batch for visual inspection
-                pred_plot = torch.sigmoid(frame_out[0]).detach().cpu().numpy()
-                label_plot = label[0].detach().cpu().numpy()
-                plt.figure(figsize=(12, 4))
-                plt.subplot(1, 2, 1)
-                plt.imshow(pred_plot.T, aspect='auto', origin='lower')
-                plt.title('Predicted')
-                plt.subplot(1, 2, 2)
-                plt.imshow(label_plot.T, aspect='auto', origin='lower')
-                plt.title('Label')
-                plt.savefig(f"{args.save_dir}/epoch_{epoch}_sample0_vis.png")
+            if args.debug and batch_idx == 0:
+                pred = torch.sigmoid(frame_out[0]).detach().cpu().numpy()
+                gt = label[0].cpu().numpy()
+                plt.figure(figsize=(10, 3))
+                plt.subplot(1, 2, 1); plt.imshow(pred.T, aspect='auto'); plt.title('Predicted')
+                plt.subplot(1, 2, 2); plt.imshow(gt.T, aspect='auto'); plt.title('Ground Truth')
+                plt.savefig(f"{args.save_dir}/epoch_{epoch}_sample0.png")
                 plt.close()
-
-    except Exception as e:
-        print(f"\n[Error] Exception in training loop at epoch {epoch}, batch {batch_idx}:")
+    except Exception:
         traceback.print_exc()
-        break  # exit training early to inspect
+        break
 
     avg_train_loss = train_loss / len(train_loader)
 
     model.eval()
     val_loss, all_preds, all_targets = 0.0, [], []
     with torch.no_grad():
-        for mel, label in tqdm(val_loader, desc=f"Epoch {epoch} Validation"):
+        for mel, label in tqdm(val_loader, desc=f"[Epoch {epoch}] Validation"):
             mel, label = mel.to(DEVICE), label.to(DEVICE)
             frame_out, onset_out = model(mel)
             loss = criterion(frame_out, label) + 5.0 * criterion(onset_out, label)
             val_loss += loss.item()
-            all_preds.append(torch.sigmoid(frame_out))
-            all_targets.append(label)
+            all_preds.append(torch.sigmoid(frame_out).cpu())
+            all_targets.append(label.cpu())
 
     avg_val_loss = val_loss / len(val_loader)
-    scheduler.step()
-
-    preds = torch.cat(all_preds, dim=0)
-    targets = torch.cat(all_targets, dim=0)
+    preds = torch.cat(all_preds)
+    targets = torch.cat(all_targets)
     metrics = compute_frame_metrics(preds, targets)
 
     note_preds = (preds > 0.1).float()
     note_targets = (targets > 0.5).float()
+    eval_subset = min(args.note_eval_subset, note_preds.shape[0])
 
-    note_metrics = [compute_note_metrics(p.cpu(), t.cpu()) for p, t in zip(note_preds, note_targets)]
+    note_metrics = [compute_note_metrics(note_preds[i], note_targets[i]) for i in range(eval_subset)]
     note_on_f1 = np.mean([m["note_onset_f1"] for m in note_metrics])
     note_off_f1 = np.mean([m["note_offset_f1"] for m in note_metrics])
-    matched_on = sum([m["matched_onsets"] for m in note_metrics])
-    matched_off = sum([m["matched_offsets"] for m in note_metrics])
 
-    print(f"\n[Epoch {epoch}]")
-    print(f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
-    print(f"Frame F1: {metrics['frame_f1']:.4f} | Precision: {metrics['frame_precision']:.4f} | Recall: {metrics['frame_recall']:.4f} | Acc: {metrics['frame_accuracy']:.4f}")
-    print(f"Note Onset F1: {note_on_f1:.4f} | Note Offset F1: {note_off_f1:.4f} | Matched Onsets: {matched_on} | Matched Offsets: {matched_off}")
+    print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+    print(f"Frame F1: {metrics['frame_f1']:.4f} | Note Onset F1: {note_on_f1:.4f} | Note Offset F1: {note_off_f1:.4f}")
 
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
         torch.save(model.state_dict(), os.path.join(args.save_dir, 'best_model.pt'))
-        print("New best model saved.")
+        print("✓ New best model saved.")
 
     if epoch % args.save_every == 0:
         ckpt_path = os.path.join(args.save_dir, f'model_epoch_{epoch}.pt')
         torch.save(model.state_dict(), ckpt_path)
-        print(f"Checkpoint saved at {ckpt_path}")
 
     writer.add_scalar('Loss/Train', avg_train_loss, epoch)
     writer.add_scalar('Loss/Val', avg_val_loss, epoch)

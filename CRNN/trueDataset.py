@@ -1,88 +1,34 @@
 import os
-import numpy as np
 import torch
 from torch.utils.data import Dataset
-import librosa
-import soundfile as sf
+import numpy as np
 
 class PianoMAPSDataset(Dataset):
-    def __init__(self, data_dir, split='train', split_ratio=(0.8, 0.1, 0.1), seed=42, sr=16000, n_mels=229):
-        self.data_dir = data_dir
-        self.audio_paths = sorted([f for f in os.listdir(data_dir) if f.endswith('.flac')])
+    def __init__(self, tensor_dir, split='train'):
+        assert split in ['train', 'val'], f"Invalid split: {split}"
+        self.tensor_dir = tensor_dir
+        self.split = split
 
-        # Consistent shuffling
-        np.random.seed(seed)
-        np.random.shuffle(self.audio_paths)
+        self.input_dir = os.path.join(tensor_dir, f"{split}_inputs")
+        self.label_dir = os.path.join(tensor_dir, f"{split}_labels")
 
-        # Train/val/test split
-        n_total = len(self.audio_paths)
-        n_train = int(split_ratio[0] * n_total)
-        n_val = int(split_ratio[1] * n_total)
+        self.files = sorted([f for f in os.listdir(self.input_dir) if f.endswith('.pt')])
+        if len(self.files) == 0:
+            raise RuntimeError(f"No tensor files found in {self.input_dir}")
 
-        if split == 'train':
-            self.audio_paths = self.audio_paths[:n_train]
-        elif split == 'val':
-            self.audio_paths = self.audio_paths[n_train:n_train+n_val]
-        elif split == 'test':
-            self.audio_paths = self.audio_paths[n_train+n_val:]
-        else:
-            raise ValueError("split must be 'train', 'val', or 'test'")
-
-        self.sr = sr
-        self.n_mels = n_mels
+        # Sanity check on dimensions
+        sample_input = torch.load(os.path.join(self.input_dir, self.files[0]))
+        sample_label = torch.load(os.path.join(self.label_dir, self.files[0]))
+        assert sample_input.ndim == 2 and sample_label.ndim == 2, "Expected 2D tensors [freq_bins, frames]"
+        assert sample_input.shape[1] == sample_label.shape[0], \
+            f"Input frames {sample_input.shape[1]} and label frames {sample_label.shape[0]} mismatch."
 
     def __len__(self):
-        return len(self.audio_paths)
+        return len(self.files)
 
     def __getitem__(self, idx):
-        audio_filename = self.audio_paths[idx]
-        audio_path = os.path.join(self.data_dir, audio_filename)
-        tsv_path = audio_path.replace('.flac', '.tsv')
-
-        # Load audio
-        y, _ = sf.read(audio_path)
-        y = librosa.resample(y, orig_sr=self.sr, target_sr=self.sr)
-
-        # Set fixed hop_length
-        hop_length = 160  # ~10ms frame hop at 16kHz
-
-        # Compute Mel-spectrogram
-        mel = librosa.feature.melspectrogram(y=y, sr=self.sr, hop_length=hop_length, n_mels=self.n_mels)
-        mel = librosa.power_to_db(mel, ref=np.max)
-
-        # Load labels
-        if not os.path.exists(tsv_path):
-            raise FileNotFoundError(f"Missing label file: {tsv_path}")
-
-        labels = np.loadtxt(tsv_path, skiprows=1, delimiter='\t')
-        if labels.size == 0:
-            labels = np.zeros((0, 4))
-        elif labels.ndim == 1:
-            labels = np.expand_dims(labels, axis=0)
-
-        time_steps = mel.shape[1]
-        frame_labels = np.zeros((88, time_steps), dtype=np.float32)
-
-        for onset, offset, note, velocity in labels:
-            note_idx = int(note) - 21
-            if 0 <= note_idx < 88:
-                on_idx = int(onset * self.sr / hop_length)
-                off_idx = int(offset * self.sr / hop_length) + 1  # include offset frame
-                if on_idx < time_steps:
-                    frame_labels[note_idx, on_idx:min(off_idx, time_steps)] = 1.0
-
-
-        max_frames = 512
-        if time_steps > max_frames:
-            start_frame = np.random.randint(0, time_steps - max_frames)
-            mel = mel[:, start_frame:start_frame + max_frames]
-            frame_labels = frame_labels[:, start_frame:start_frame + max_frames]
-        else:
-            pad_size = max_frames - time_steps
-            mel = np.pad(mel, ((0, 0), (0, pad_size)), mode='constant')
-            frame_labels = np.pad(frame_labels, ((0, 0), (0, pad_size)), mode='constant')
-
-        mel = torch.tensor(mel, dtype=torch.float32)
-        label = torch.tensor(frame_labels, dtype=torch.float32)
-
-        return mel.unsqueeze(0), label.transpose(0, 1)  # Output: [1, 229, 512], [512, 88]
+        fname = self.files[idx]
+        input_tensor = torch.load(os.path.join(self.input_dir, fname)).float()
+        label_tensor = torch.load(os.path.join(self.label_dir, fname)).float()
+        # Reshape: [freq_bins, frames] → [1, freq_bins, frames] to treat as a channel
+        return input_tensor.unsqueeze(0), label_tensor

@@ -4,31 +4,32 @@ from torch.utils.data import Dataset
 
 class PianoMAPSDataset(Dataset):
     def __init__(self, data_dir, split='train'):
-        self.input_dir = f"/content/train_inputs"
-        self.label_dir = f"/content/train_labels"
-        self.input_paths = sorted([f for f in os.listdir(self.input_dir) if f.endswith('.pt')])
-        self.label_paths = sorted([f for f in os.listdir(self.label_dir) if f.endswith('.pt')])
+        self.input_dir = "/content/train_inputs"
+        self.label_dir = "/content/train_labels"
+
+        input_files = sorted([f for f in os.listdir(self.input_dir) if f.endswith("_mel.pt")])
+        label_files = sorted([f for f in os.listdir(self.label_dir) if f.endswith("_label.pt")])
+
+        input_basenames = {f.replace("_mel.pt", ""): f for f in input_files}
+        label_basenames = {f.replace("_label.pt", ""): f for f in label_files}
+
+        common_basenames = sorted(set(input_basenames.keys()) & set(label_basenames.keys()))
 
         self.data = []
         skipped = 0
-
-        for f in self.input_paths:
-            input_path = os.path.join(self.input_dir, f)
-            label_path = os.path.join(self.label_dir, f)
-            if not os.path.exists(label_path):
-                skipped += 1
-                continue
-
+        for base in common_basenames:
+            input_path = os.path.join(self.input_dir, input_basenames[base])
+            label_path = os.path.join(self.label_dir, label_basenames[base])
             try:
-                sample_input = torch.load(input_path)
-                sample_label = torch.load(label_path)
-
-                # Check shape compatibility
-                assert sample_input.shape[1] == sample_label.shape[0], \
-                    f"Mismatch: input frames {sample_input.shape[1]} vs label frames {sample_label.shape[0]}"
+                input_tensor = torch.load(input_path)
+                label_tensor = torch.load(label_path)
+                if input_tensor.shape[1] != label_tensor.shape[0]:
+                    print(f"[SKIPPED] {base} - frame mismatch {input_tensor.shape[1]} vs {label_tensor.shape[0]}")
+                    skipped += 1
+                    continue
                 self.data.append((input_path, label_path))
             except Exception as e:
-                print(f"[SKIPPED] {f} - {e}")
+                print(f"[SKIPPED] {base} - {e}")
                 skipped += 1
 
         print(f"[INFO] Loaded {len(self.data)} valid samples. Skipped {skipped}.")
@@ -37,7 +38,7 @@ class PianoMAPSDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        base = self.data[idx]
-        input_tensor = torch.load(os.path.join(self.input_dir, self.basename_to_input[base])).float()
-        label_tensor = torch.load(os.path.join(self.label_dir, self.basename_to_label[base])).float()
+        input_path, label_path = self.data[idx]
+        input_tensor = torch.load(input_path).float()
+        label_tensor = torch.load(label_path).float()
         return input_tensor.unsqueeze(0), label_tensor

@@ -8,7 +8,7 @@ import csv
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 import numpy as np
 from model.model import CRNN
-from trueDataset import PianoMAPSDataset
+from localTrueDataset import LocalPianoMAPSDataset
 
 def compute_frame_metrics(preds, targets, threshold=0.1):
     preds_bin = (preds > threshold).cpu().numpy().astype(int)
@@ -28,8 +28,8 @@ optimizer = optim.Adam(model.parameters(), lr=1e-3)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 criterion = nn.BCEWithLogitsLoss()
 
-train_loader = DataLoader(PianoMAPSDataset(tensor_dir, 'train'), batch_size=8, shuffle=True)
-val_loader = DataLoader(PianoMAPSDataset(tensor_dir, 'val'), batch_size=8, shuffle=False)
+train_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'train'), batch_size=8, shuffle=True)
+val_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'val'), batch_size=8, shuffle=False)
 
 csv_path = os.path.join(save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:

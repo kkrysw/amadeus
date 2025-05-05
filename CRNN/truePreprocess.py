@@ -8,8 +8,8 @@ from joblib import Parallel, delayed
 import multiprocessing
 import shutil
 
-# === Parameters ===
-BASE_DIR = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS"
+# === Parameters to set up ===
+BASE_DIR = r"/scratch/ksw9582/MAPS"
 TEMP_DIR = os.path.join(BASE_DIR, "temp_extract")
 OUTPUT_DIR = os.path.join(BASE_DIR, "newMAP")
 OUTPUT_AUDIO_DIR = os.path.join(OUTPUT_DIR, "audio")
@@ -20,6 +20,7 @@ os.makedirs(OUTPUT_AUDIO_DIR, exist_ok=True)
 os.makedirs(OUTPUT_TSV_DIR, exist_ok=True)
 
 # === MIDI to TSV Functions ===
+# Convert all midis to tsvs using parallel processing, then store them in output_tsv_dir
 def parse_midi(path):
     from miditoolkit import MidiFile
 
@@ -54,7 +55,7 @@ wav_files = glob(os.path.join(BASE_DIR, '**', '*.wav'), recursive=True)
 print(f"[INFO] Found {len(midi_files)} MIDI files.")
 print(f"[INFO] Found {len(wav_files)} WAV files.")
 
-# === Process MIDI to TSV ===
+# === Process MIDI to TSV === (note to text)
 def process_midi_file(midi_path):
     output_path = os.path.join(OUTPUT_TSV_DIR, os.path.basename(midi_path).replace('.mid', '.tsv'))
     save_tsv(midi_path, output_path)
@@ -63,7 +64,9 @@ Parallel(n_jobs=multiprocessing.cpu_count())(
     delayed(process_midi_file)(m) for m in tqdm(midi_files, desc="Processing MIDI files")
 )
 
-# === Convert WAV to FLAC ===
+# === Convert WAV to FLAC === (compress audio)
+# for each wav file, convert it to mono and 16kHz sample rate; 
+# export it as a flac file into output_audio_dir
 for wav_path in tqdm(wav_files, desc="Converting WAV to FLAC"):
     try:
         sound = AudioSegment.from_wav(wav_path)
@@ -75,6 +78,8 @@ for wav_path in tqdm(wav_files, desc="Converting WAV to FLAC"):
         print(f"[WAV ERROR] Failed to convert {wav_path}: {e}")
 
 # === Match TSVs to FLACs ===
+# for each tsv, check if there's a matching flac based on filename
+# if yes, move tsv into same folder as flac
 for tsv_path in glob(os.path.join(OUTPUT_TSV_DIR, "*.tsv")):
     base_name = os.path.basename(tsv_path).replace('.tsv', '')
     flac_match = os.path.join(OUTPUT_AUDIO_DIR, base_name + ".flac")
@@ -83,6 +88,7 @@ for tsv_path in glob(os.path.join(OUTPUT_TSV_DIR, "*.tsv")):
     else:
         print(f"[WARN] No matching FLAC found for: {base_name}. TSV kept in tsvs/ folder.")
 
-# === Zip final output ===
+# === Zip final output === 
+# Zips the entire newMAP directory into newMAP.zip inside BASE_DIR
 shutil.make_archive(os.path.join(BASE_DIR, "newMAP"), 'zip', OUTPUT_DIR)
 print("[DONE] newMAP.zip created successfully.")

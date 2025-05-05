@@ -34,10 +34,10 @@ class PianoMAPSDataset(Dataset):
         print(f"[INFO] Loaded {len(self.data)} valid samples. Skipped {skipped}.")
 
     def __len__(self):
-        return len(self.common_keys)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        base = self.common_keys[idx]
+        base = self.data[idx]
         input_tensor = torch.load(os.path.join(self.input_dir, self.basename_to_input[base])).float()
         label_tensor = torch.load(os.path.join(self.label_dir, self.basename_to_label[base])).float()
         return input_tensor.unsqueeze(0), label_tensor

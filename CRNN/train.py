@@ -164,6 +164,8 @@ for epoch in range(1, args.num_epochs + 1):
 
     print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
     print(f"Frame F1: {metrics['frame_f1']:.4f} | Note Onset F1: {note_on_f1:.4f} | Note Offset F1: {note_off_f1:.4f}")
+    skipped_count = len(note_metrics_raw) - len(note_metrics)
+    print(f"[INFO] Skipped {skipped_count} invalid note pairs in epoch {epoch}")
 
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss

@@ -8,9 +8,8 @@ from joblib import Parallel, delayed
 import multiprocessing
 import shutil
 
-from pydub.utils import which
-print(which("ffmpeg"))
-# AudioSegment.ffmpeg = r"C:\ffmpeg\bin\ffmpeg.exe"
+import os
+print(os.environ["PATH"])
 
 # # === Parameters ===
 # BASE_DIR = r"C:\Users\kevin\Downloads\MAPS"

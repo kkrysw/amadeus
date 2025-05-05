@@ -9,7 +9,7 @@ import multiprocessing
 import shutil
 
 # === Parameters to set up ===
-BASE_DIR = r"/scratch/ksw9582/MAPS"
+BASE_DIR = "/Users/krystalwu/ReconVAT/MAPS"
 TEMP_DIR = os.path.join(BASE_DIR, "temp_extract")
 OUTPUT_DIR = os.path.join(BASE_DIR, "newMAP")
 OUTPUT_AUDIO_DIR = os.path.join(OUTPUT_DIR, "audio")

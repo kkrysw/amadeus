@@ -15,21 +15,37 @@ class LocalPianoMAPSDataset(Dataset):
 
         common_basenames = sorted(set(input_basenames) & set(label_basenames))
 
-        self.data = []
+        print(f"[DEBUG] Total input files: {len(input_files)}")
+
+        self.data = []  # FIXED: initialize before use
         skipped = 0
+
+        for i, base in enumerate(common_basenames[:5]):
+            input_path = os.path.join(self.input_dir, input_basenames[base])
+            label_path = os.path.join(self.label_dir, label_basenames[base])
+            try:
+                input_tensor = torch.load(input_path)
+                label_tensor = torch.load(label_path)
+                print(f"[DEBUG] {base}: input {input_tensor.shape}, label {label_tensor.shape}")
+            except Exception as e:
+                print(f"[DEBUG ERROR] {base} - {e}")
+
         for base in common_basenames:
             input_path = os.path.join(self.input_dir, input_basenames[base])
             label_path = os.path.join(self.label_dir, label_basenames[base])
             try:
                 input_tensor = torch.load(input_path)
                 label_tensor = torch.load(label_path)
-                if input_tensor.shape[1] != label_tensor.shape[0]:
-                    print(f"[SKIPPED] {base} - frame mismatch {input_tensor.shape[1]} vs {label_tensor.shape[0]}")
+
+                if input_tensor.shape[0] != label_tensor.shape[0]:
+                    #print(f"[SKIPPED] {base} - time mismatch {input_tensor.shape[0]} vs {label_tensor.shape[0]}")
                     skipped += 1
                     continue
+
                 self.data.append((input_path, label_path))
+                #print(f"[ADDED] {base}")
             except Exception as e:
-                print(f"[SKIPPED] {base} - {e}")
+                #print(f"[SKIPPED] {base} - {e}")
                 skipped += 1
 
         print(f"[INFO] Loaded {len(self.data)} valid samples. Skipped {skipped}.")
@@ -39,6 +55,9 @@ class LocalPianoMAPSDataset(Dataset):
 
     def __getitem__(self, idx):
         input_path, label_path = self.data[idx]
-        input_tensor = torch.load(input_path).float()
-        label_tensor = torch.load(label_path).float()
-        return input_tensor.unsqueeze(0), label_tensor
+        input_tensor = torch.load(input_path).float().T  # [T, 229] → [229, T]
+        input_tensor = input_tensor.unsqueeze(0).unsqueeze(0)  # [1, 1, 229, T]
+
+        label_tensor = torch.load(label_path).float().unsqueeze(0)  # [1, T, 88]
+
+        return input_tensor, label_tensor

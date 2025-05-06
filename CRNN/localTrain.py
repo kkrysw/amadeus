@@ -17,17 +17,14 @@ def compute_frame_metrics(preds, targets, threshold=0.05):
     acc = accuracy_score(targets_bin.flatten(), preds_bin.flatten())
     return {"frame_precision": p, "frame_recall": r, "frame_f1": f1, "frame_accuracy": acc}
 
-def collate_pad_fn(batch):
+def collate_pad_fn(batch, global_len=408):
     import torch.nn.functional as F
     mels, labels = zip(*batch)
 
-    max_len = max(mel.shape[-1] for mel in mels)
-
-    padded_mels = [F.pad(mel, (0, max_len - mel.shape[-1])) for mel in mels]
-    padded_labels = [F.pad(label, (0, 0, 0, max_len - label.shape[1])) for label in labels]
+    padded_mels = [F.pad(mel, (0, global_len - mel.shape[-1])) for mel in mels]
+    padded_labels = [F.pad(label, (0, 0, 0, global_len - label.shape[1])) for label in labels]
 
     return torch.cat(padded_mels, dim=0), torch.cat(padded_labels, dim=0)
-
 
 # Set local tensor path
 tensor_dir = r"C:\Users\kevin\Downloads\MAPS\preprocessed_tensors"

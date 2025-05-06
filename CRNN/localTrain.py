@@ -18,7 +18,7 @@ def compute_frame_metrics(preds, targets, threshold=0.1):
     return {"frame_precision": p, "frame_recall": r, "frame_f1": f1, "frame_accuracy": acc}
 
 # Set local tensor path
-tensor_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\preprocessed_tensors"
+tensor_dir = r"C:\Users\kevin\Downloads\MAPS\preprocessed_tensors"
 save_dir = "./weights_local"
 os.makedirs(save_dir, exist_ok=True)
 
@@ -35,7 +35,7 @@ csv_path = os.path.join(save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:
     csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss', 'F1', 'Precision', 'Recall', 'Accuracy'])
 
-for epoch in range(1, 11):
+for epoch in range(1, 2):
     model.train()
     total_loss = 0
     for mel, label in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):

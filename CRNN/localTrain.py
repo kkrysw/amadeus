@@ -10,12 +10,24 @@ import numpy as np
 from model.model import CRNN
 from localTrueDataset import LocalPianoMAPSDataset
 
-def compute_frame_metrics(preds, targets, threshold=0.1):
+def compute_frame_metrics(preds, targets, threshold=0.05):
     preds_bin = (preds > threshold).cpu().numpy().astype(int)
     targets_bin = (targets > 0.5).cpu().numpy().astype(int)
     p, r, f1, _ = precision_recall_fscore_support(targets_bin.flatten(), preds_bin.flatten(), average='binary', zero_division=0)
     acc = accuracy_score(targets_bin.flatten(), preds_bin.flatten())
     return {"frame_precision": p, "frame_recall": r, "frame_f1": f1, "frame_accuracy": acc}
+
+def collate_pad_fn(batch):
+    import torch.nn.functional as F
+    mels, labels = zip(*batch)
+
+    max_len = max(mel.shape[-1] for mel in mels)
+
+    padded_mels = [F.pad(mel, (0, max_len - mel.shape[-1])) for mel in mels]
+    padded_labels = [F.pad(label, (0, 0, 0, max_len - label.shape[1])) for label in labels]
+
+    return torch.cat(padded_mels, dim=0), torch.cat(padded_labels, dim=0)
+
 
 # Set local tensor path
 tensor_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\preprocessed_tensors"
@@ -28,8 +40,9 @@ optimizer = optim.Adam(model.parameters(), lr=1e-3)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 criterion = nn.BCEWithLogitsLoss()
 
-train_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'train'), batch_size=8, shuffle=True)
-val_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'val'), batch_size=8, shuffle=False)
+train_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'train'), batch_size=8, shuffle=True, collate_fn=collate_pad_fn)
+val_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'val'), batch_size=8, shuffle=False, collate_fn=collate_pad_fn)
+
 
 csv_path = os.path.join(save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:
@@ -41,7 +54,9 @@ for epoch in range(1, 11):
     for mel, label in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):
         mel, label = mel.to(DEVICE), label.to(DEVICE)
         frame_out, onset_out = model(mel)
-        loss = criterion(frame_out, label) + 5.0 * criterion(onset_out, label)
+        loss_frame = criterion(frame_out, label)
+        loss_onset = criterion(onset_out, label)
+        loss = 0.5 * loss_frame + 0.5 * loss_onset
         optimizer.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -55,7 +70,7 @@ for epoch in range(1, 11):
         for mel, label in val_loader:
             mel, label = mel.to(DEVICE), label.to(DEVICE)
             frame_out, onset_out = model(mel)
-            loss = criterion(frame_out, label) + 5.0 * criterion(onset_out, label)
+            loss = 0.5 * criterion(frame_out, label) + 0.5 * criterion(onset_out, label)
             val_loss += loss.item()
             all_preds.append(torch.sigmoid(frame_out).cpu())
             all_targets.append(label.cpu())

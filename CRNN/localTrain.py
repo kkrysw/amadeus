@@ -30,7 +30,7 @@ def collate_pad_fn(batch):
 
 
 # Set local tensor path
-tensor_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\preprocessed_tensors"
+tensor_dir = r"C:\Users\kevin\Downloads\MAPS\preprocessed_tensors"
 save_dir = "./weights_local"
 os.makedirs(save_dir, exist_ok=True)
 

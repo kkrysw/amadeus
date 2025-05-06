@@ -27,8 +27,10 @@ def collate_pad_fn(batch, global_len=408):
     return torch.cat(padded_mels, dim=0), torch.cat(padded_labels, dim=0)
 
 # Set local tensor path
-tensor_dir = r"C:\Users\kevin\Downloads\MAPS\preprocessed_tensors"
-save_dir = "./weights_local"
+#tensor_dir = r"C:\Users\kevin\Downloads\MAPS\preprocessed_tensors"
+tensor_dir="/content/preprocessed_tensors"
+#save_dir = "./weights_local"
+save_dir="/content/weights_local"
 os.makedirs(save_dir, exist_ok=True)
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'

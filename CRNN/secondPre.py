@@ -7,8 +7,8 @@ from tqdm import tqdm
 from torchaudio.transforms import MelSpectrogram
 
 # Adjust these paths for local use
-audio_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\newMAP\audio"
-output_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\preprocessed_tensors"
+audio_dir = "/Users/krystalwu/ReconVAT/MAPS/newMAP/audio"
+output_dir = "/Users/krystalwu/ReconVAT/MAPS/preprocessed_tensors"
 
 mel_transform = MelSpectrogram(sample_rate=16000, n_fft=2048, hop_length=512, n_mels=229)
 

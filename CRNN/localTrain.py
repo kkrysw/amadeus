@@ -40,7 +40,7 @@ scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 criterion = nn.BCEWithLogitsLoss()
 
 train_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'train'), batch_size=8, shuffle=True, collate_fn=collate_pad_fn)
-val_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'val'), batch_size=2, shuffle=False, collate_fn=collate_pad_fn)
+val_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'val'), batch_size=4, num_workers=4, shuffle=False, collate_fn=collate_pad_fn)
 
 
 csv_path = os.path.join(save_dir, 'loss_log.csv')

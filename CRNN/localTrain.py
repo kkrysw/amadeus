@@ -40,7 +40,7 @@ csv_path = os.path.join(save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:
     csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss', 'F1', 'Precision', 'Recall', 'Accuracy'])
 
-for epoch in range(1, 2):
+for epoch in range(1, 6):
     model.train()
     total_loss = 0
     for mel, label in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):

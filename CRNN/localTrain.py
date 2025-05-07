@@ -5,7 +5,6 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import csv
-from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 import numpy as np
 from model.model import CRNN
 from localTrueDataset import LocalPianoMAPSDataset
@@ -69,7 +68,7 @@ for epoch in range(1, 2):
             pred=torch.sigmoid(frame_out).cpu()
             target=label.cpu()
 
-            pred_bin = (pred > 0.05).numpy().astype(int)
+            pred_bin = (pred > 0.01).numpy().astype(int)
             target_bin = (target > 0.5).numpy().astype(int)
 
             pred_flat = pred_bin.flatten()

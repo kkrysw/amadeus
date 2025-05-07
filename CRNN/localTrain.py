@@ -75,9 +75,9 @@ for epoch in range(1, 2):
             all_targets.append(label.cpu())
 
     avg_val_loss = val_loss / len(val_loader)
-    print(f"Number of validation batches: {len(all_preds)}") #temp
     preds = torch.cat(all_preds)
     targets = torch.cat(all_targets)
+    print(f"Computing metrics with {len(preds)} predictions and {len(targets)} targets") #temp
     metrics = compute_frame_metrics(preds, targets)
 
     print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")

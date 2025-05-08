@@ -169,9 +169,13 @@ for epoch in range(1, args.num_epochs + 1):
             all_targets.append(label.cpu())
 
     avg_val_loss = val_loss / len(val_loader)
-    preds = torch.cat(all_preds)
-    targets = torch.cat(all_targets)
+    min_len = min(pred.shape[0] for pred in all_preds)
 
+    all_preds_trimmed = [pred[:min_len] for pred in all_preds]
+    all_targets_trimmed = [t[:min_len] for t in all_targets]
+
+    preds = torch.cat(all_preds_trimmed)
+    targets = torch.cat(all_targets_trimmed)
     
     metrics = compute_frame_metrics(preds, targets)
 

@@ -16,6 +16,10 @@ import traceback
 from model.model import CRNN
 from trueDataset import PianoMAPSDataset
 
+from torch import amp
+scaler = amp.GradScaler("cuda")
+
+
 def compute_frame_metrics(preds, targets, threshold=0.1):
     preds_bin = (preds > threshold).cpu().numpy().astype(int)
     targets_bin = (targets > 0.5).cpu().numpy().astype(int)
@@ -125,13 +129,20 @@ for epoch in range(1, args.num_epochs + 1):
     try:
         for batch_idx, (mel, label, onset) in enumerate(train_loader):
             mel, label, onset = mel.to(DEVICE), label.to(DEVICE), onset.to(DEVICE)
-            frame_out, onset_out = model(mel)
-            loss = criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
+
             optimizer.zero_grad()
-            loss.backward()
+
+            with amp.autocast(device_type='cuda'):
+                frame_out, onset_out = model(mel)
+                loss = criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
+
+            scaler.scale(loss).backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
+
             train_loss += loss.item()
+
             if args.debug and batch_idx == 0:
                 pred = torch.sigmoid(frame_out[0]).detach().cpu().numpy()
                 gt = label[0].cpu().numpy()

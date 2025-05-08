@@ -123,7 +123,7 @@ for epoch in range(1, args.num_epochs + 1):
     model.train()
     train_loss = 0.0
     try:
-        for batch_idx, (mel, label, onset) in enumerate(...):
+        for batch_idx, (mel, label, onset) in enumerate(train_loader):
             mel, label, onset = mel.to(DEVICE), label.to(DEVICE), onset.to(DEVICE)
             frame_out, onset_out = model(mel)
             loss = criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
@@ -149,7 +149,7 @@ for epoch in range(1, args.num_epochs + 1):
     model.eval()
     val_loss, all_preds, all_targets = 0.0, [], []
     with torch.no_grad():
-        for mel, label, onset in tqdm(...):
+        for mel, label, onset in tqdm(val_loader):
             mel, label, onset = mel.to(DEVICE), label.to(DEVICE), onset.to(DEVICE)
             frame_out, onset_out = model(mel)
             loss = criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)

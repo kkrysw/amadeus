@@ -19,18 +19,24 @@ def compute_frame_metrics(preds, targets, threshold=0.05):
 
 def collate_pad_fn(batch):
     import torch.nn.functional as F
-    mels, labels = zip(*batch)
+    mels, labels, onsets = zip(*batch)
 
+    # All mels: [1, 229, T] → concat over time dim
     max_len = max(mel.shape[-1] for mel in mels)
 
-    padded_mels = [F.pad(mel, (0, max_len - mel.shape[-1])) for mel in mels]
-    padded_labels = [F.pad(label, (0, 0, 0, max_len - label.shape[1])) for label in labels]
+    padded_mels = [F.pad(mel, (0, max_len - mel.shape[-1])) for mel in mels]  # keep [1, 229, T]
+    padded_labels = [F.pad(label, (0, 0, 0, max_len - label.shape[0])) for label in labels]  # [T, 88]
+    padded_onsets = [F.pad(onset, (0, 0, 0, max_len - onset.shape[0])) for onset in onsets]  # [T, 88]
 
-    return torch.cat(padded_mels, dim=0), torch.cat(padded_labels, dim=0)
+    return (
+        torch.stack(padded_mels),                            # → [B, 1, 229, T]
+        torch.stack(padded_labels),                          # → [B, T, 88]
+        torch.stack(padded_onsets),                          # → [B, T, 88]
+    )
 
 
 # Set local tensor path
-tensor_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\preprocessed_tensors"
+tensor_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\true_preprocessed_tensors"
 save_dir = "./weights_local"
 os.makedirs(save_dir, exist_ok=True)
 
@@ -40,56 +46,87 @@ optimizer = optim.Adam(model.parameters(), lr=1e-3)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 criterion = nn.BCEWithLogitsLoss()
 
-train_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'train'), batch_size=8, shuffle=True, collate_fn=collate_pad_fn)
-val_loader = DataLoader(LocalPianoMAPSDataset(tensor_dir, 'val'), batch_size=8, shuffle=False, collate_fn=collate_pad_fn)
+if __name__ == "__main__":
+    train_loader = DataLoader(
+        LocalPianoMAPSDataset(tensor_dir, 'train'),
+        batch_size=8,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True,
+        collate_fn=collate_pad_fn
+    )
 
+    val_loader = DataLoader(
+        LocalPianoMAPSDataset(tensor_dir, 'val'),
+        batch_size=8,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
+        collate_fn=collate_pad_fn
+    )
 
-csv_path = os.path.join(save_dir, 'loss_log.csv')
-with open(csv_path, 'w', newline='') as f:
-    csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss', 'F1', 'Precision', 'Recall', 'Accuracy'])
+    csv_path = os.path.join(save_dir, 'loss_log.csv')
+    with open(csv_path, 'w', newline='') as f:
+        csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss', 'F1', 'Precision', 'Recall', 'Accuracy'])
 
-for epoch in range(1, 11):
-    model.train()
-    total_loss = 0
-    for mel, label in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):
-        mel, label = mel.to(DEVICE), label.to(DEVICE)
-        frame_out, onset_out = model(mel)
-        loss_frame = criterion(frame_out, label)
-        loss_onset = criterion(onset_out, label)
-        loss = 0.5 * loss_frame + 0.5 * loss_onset
-        optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
-        total_loss += loss.item()
-    avg_train_loss = total_loss / len(train_loader)
+    import time
+    start = time.time()
+    print("STARTING!\n")
 
-    model.eval()
-    val_loss, all_preds, all_targets = 0, [], []
-    with torch.no_grad():
-        for mel, label in val_loader:
-            mel, label = mel.to(DEVICE), label.to(DEVICE)
+    for epoch in range(1, 11):
+        model.train()
+        total_loss = 0
+        for mel, label, onset in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):
+            mel = mel.to(DEVICE, non_blocking=True)
+            label = label.to(DEVICE, non_blocking=True)
+            onset = onset.to(DEVICE, non_blocking=True)
+
             frame_out, onset_out = model(mel)
-            loss = 0.5 * criterion(frame_out, label) + 0.5 * criterion(onset_out, label)
-            val_loss += loss.item()
-            all_preds.append(torch.sigmoid(frame_out).cpu())
-            all_targets.append(label.cpu())
+            loss_frame = criterion(frame_out, label)
+            loss_onset = criterion(onset_out, onset)
+            loss = 0.5 * loss_frame + 0.5 * loss_onset
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            total_loss += loss.item()
+        avg_train_loss = total_loss / len(train_loader)
 
-    avg_val_loss = val_loss / len(val_loader)
-    preds = torch.cat(all_preds)
-    targets = torch.cat(all_targets)
-    metrics = compute_frame_metrics(preds, targets)
+        model.eval()
+        val_loss, all_preds, all_targets = 0, [], []
+        with torch.no_grad():
+            for mel, label, onset in val_loader:
+                mel = mel.to(DEVICE, non_blocking=True)
+                label = label.to(DEVICE, non_blocking=True)
+                onset = onset.to(DEVICE, non_blocking=True)
 
-    print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
-    print(f"Frame F1: {metrics['frame_f1']:.4f} | Precision: {metrics['frame_precision']:.4f} | Recall: {metrics['frame_recall']:.4f}")
+                frame_out, onset_out = model(mel)
+                loss = 0.5 * criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
+                val_loss += loss.item()
+                all_preds.append(torch.sigmoid(frame_out).cpu())
+                all_targets.append(label.cpu())
 
-    with open(csv_path, 'a', newline='') as f:
-        csv.writer(f).writerow([
-            epoch, avg_train_loss, avg_val_loss,
-            metrics['frame_f1'], metrics['frame_precision'],
-            metrics['frame_recall'], metrics['frame_accuracy']
-        ])
+        avg_val_loss = val_loss / len(val_loader)
+        preds = torch.cat(all_preds)
+        targets = torch.cat(all_targets)
 
-    scheduler.step()
+        mask = (targets.sum(dim=-1) != 0)
+        valid_preds = preds[mask]
+        valid_targets = targets[mask]
 
-print(" Local training finished.")
+        metrics = compute_frame_metrics(valid_preds, valid_targets)
+
+        print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+        print(f"Frame F1: {metrics['frame_f1']:.4f} | Precision: {metrics['frame_precision']:.4f} | Recall: {metrics['frame_recall']:.4f}")
+        print(f"[Epoch {epoch}] Time: {time.time() - start:.2f}s")
+
+        with open(csv_path, 'a', newline='') as f:
+            csv.writer(f).writerow([
+                epoch, avg_train_loss, avg_val_loss,
+                metrics['frame_f1'], metrics['frame_precision'],
+                metrics['frame_recall'], metrics['frame_accuracy']
+            ])
+
+        scheduler.step()
+
+    print("Local training finished.")

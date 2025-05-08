@@ -4,16 +4,15 @@ from torch.utils.data import Dataset
 
 class PianoMAPSDataset(Dataset):
     def __init__(self, data_dir, split='train'):
-        self.input_dir = "/content/train_inputs"
-        self.label_dir = "/content/train_labels"
+        self.input_dir = os.path.join(data_dir, "train_inputs")
+        self.label_dir = os.path.join(data_dir, "train_labels")
 
         input_files = sorted([f for f in os.listdir(self.input_dir) if f.endswith("_mel.pt")])
         label_files = sorted([f for f in os.listdir(self.label_dir) if f.endswith("_label.pt")])
 
         input_basenames = {f.replace("_mel.pt", ""): f for f in input_files}
         label_basenames = {f.replace("_label.pt", ""): f for f in label_files}
-
-        common_basenames = sorted(set(input_basenames.keys()) & set(label_basenames.keys()))
+        common_basenames = sorted(set(input_basenames) & set(label_basenames))
 
         self.data = []
         skipped = 0
@@ -39,6 +38,11 @@ class PianoMAPSDataset(Dataset):
 
     def __getitem__(self, idx):
         input_path, label_path = self.data[idx]
-        input_tensor = torch.load(input_path).float()
-        label_tensor = torch.load(label_path).float()
-        return input_tensor.unsqueeze(0), label_tensor
+        input_tensor = torch.load(input_path).float()             # [1, 229, T]
+        label_tensor = torch.load(label_path).float()             # [T, 88]
+
+        # Derive onset: [T, 88]
+        onset_tensor = (label_tensor[1:] > 0) & (label_tensor[:-1] == 0)
+        onset_tensor = torch.cat([label_tensor[:1] > 0, onset_tensor], dim=0).float()
+
+        return input_tensor, label_tensor, onset_tensor

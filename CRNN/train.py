@@ -23,6 +23,17 @@ def compute_frame_metrics(preds, targets, threshold=0.1):
     acc = accuracy_score(targets_bin.flatten(), preds_bin.flatten())
     return {"frame_precision": p, "frame_recall": r, "frame_f1": f1, "frame_accuracy": acc}
 
+def collate_pad_fn(batch):
+    import torch.nn.functional as F
+    mels, labels, onsets = zip(*batch)
+    max_len = max(mel.shape[-1] for mel in mels)
+
+    padded_mels = [F.pad(mel, (0, max_len - mel.shape[-1])) for mel in mels]
+    padded_labels = [F.pad(label, (0, 0, 0, max_len - label.shape[0])) for label in labels]
+    padded_onsets = [F.pad(onset, (0, 0, 0, max_len - onset.shape[0])) for onset in onsets]
+
+    return torch.stack(padded_mels), torch.stack(padded_labels), torch.stack(padded_onsets)
+
 def extract_notes(piano_roll, onset_thresh=0.5, fps=100):
     notes = []
     for pitch in range(piano_roll.shape[1]):
@@ -88,8 +99,19 @@ optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 criterion = nn.BCEWithLogitsLoss()
 
-train_loader = DataLoader(PianoMAPSDataset(args.data_dir, 'train'), batch_size=args.batch_size, shuffle=True)
-val_loader = DataLoader(PianoMAPSDataset(args.data_dir, 'val'), batch_size=args.batch_size, shuffle=False)
+train_loader = DataLoader(
+    PianoMAPSDataset(args.data_dir, 'train'),
+    batch_size=args.batch_size,
+    shuffle=True,
+    collate_fn=collate_pad_fn
+)
+
+val_loader = DataLoader(
+    PianoMAPSDataset(args.data_dir, 'val'),
+    batch_size=args.batch_size,
+    shuffle=False,
+    collate_fn=collate_pad_fn
+)
 
 csv_path = os.path.join(args.save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:
@@ -101,10 +123,10 @@ for epoch in range(1, args.num_epochs + 1):
     model.train()
     train_loss = 0.0
     try:
-        for batch_idx, (mel, label) in enumerate(tqdm(train_loader, desc=f"[Epoch {epoch}] Training")):
-            mel, label = mel.to(DEVICE), label.to(DEVICE)
+        for batch_idx, (mel, label, onset) in enumerate(...):
+            mel, label, onset = mel.to(DEVICE), label.to(DEVICE), onset.to(DEVICE)
             frame_out, onset_out = model(mel)
-            loss = criterion(frame_out, label) + 5.0 * criterion(onset_out, label)
+            loss = criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -127,10 +149,10 @@ for epoch in range(1, args.num_epochs + 1):
     model.eval()
     val_loss, all_preds, all_targets = 0.0, [], []
     with torch.no_grad():
-        for mel, label in tqdm(val_loader, desc=f"[Epoch {epoch}] Validation"):
-            mel, label = mel.to(DEVICE), label.to(DEVICE)
+        for mel, label, onset in tqdm(...):
+            mel, label, onset = mel.to(DEVICE), label.to(DEVICE), onset.to(DEVICE)
             frame_out, onset_out = model(mel)
-            loss = criterion(frame_out, label) + 5.0 * criterion(onset_out, label)
+            loss = criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
             val_loss += loss.item()
             all_preds.append(torch.sigmoid(frame_out).cpu())
             all_targets.append(label.cpu())
@@ -170,12 +192,16 @@ for epoch in range(1, args.num_epochs + 1):
     if avg_val_loss < best_val_loss:
         best_val_loss = avg_val_loss
         torch.save(model.state_dict(), os.path.join(args.save_dir, 'best_model.pt'))
-        print("✓ New best model saved.")
+        print("New best model saved.")
 
     if epoch % args.save_every == 0:
         ckpt_path = os.path.join(args.save_dir, f'model_epoch_{epoch}.pt')
         torch.save(model.state_dict(), ckpt_path)
+    onset_preds = torch.sigmoid(onset_out)
+    onset_metrics = compute_frame_metrics(onset_preds.cpu(), onset.cpu())
+    print(f"Onset F1: {onset_metrics['frame_f1']:.4f} | Onset Precision: {onset_metrics['frame_precision']:.4f} | Onset Recall: {onset_metrics['frame_recall']:.4f}")
 
+    writer.add_scalar('Metrics/Onset_F1', onset_metrics['frame_f1'], epoch)
     writer.add_scalar('Loss/Train', avg_train_loss, epoch)
     writer.add_scalar('Loss/Val', avg_val_loss, epoch)
     writer.add_scalar('Metrics/F1', metrics['frame_f1'], epoch)

@@ -2,7 +2,7 @@ import os
 import torch
 from torch.utils.data import Dataset
 
-class LocalPianoMAPSDataset(Dataset):
+class PianoMAPSDataset(Dataset):
     def __init__(self, root_dir, split='train'):
         self.input_dir = os.path.join(root_dir, 'mels')
         self.label_dir = os.path.join(root_dir, 'labels')

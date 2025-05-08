@@ -74,6 +74,7 @@ if __name__ == "__main__":
     print("STARTING!\n")
 
     for epoch in range(1, 2):
+        torch.cuda.empty_cache() #temp
         model.train()
         total_loss = 0
         for mel, label, onset in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):

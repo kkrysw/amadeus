@@ -154,16 +154,39 @@ if __name__ == "__main__":
         print(f"Frame F1: {metrics['frame_f1']:.4f} | Precision: {metrics['frame_precision']:.4f} | Recall: {metrics['frame_recall']:.4f}")
 
         mir_precision, mir_recall, mir_f1 = 0, 0, 0
+        frame_hop = 512 / 16000  # = 0.032s per frame (used in preprocessing)
+
         for ref_onsets, ref_pitches, est_onsets, est_pitches in zip(
             ref_onsets_all, ref_pitches_all, est_onsets_all, est_pitches_all):
-            p, r, f = mir_eval.transcription.onset_precision_recall_f1(ref_onsets, ref_pitches, est_onsets, est_pitches)
-            mir_precision += p
-            mir_recall += r
-            mir_f1 += f
 
-        mir_precision /= len(ref_onsets_all)
-        mir_recall /= len(ref_onsets_all)
-        mir_f1 /= len(ref_onsets_all)
+            if len(ref_onsets) == 0 or len(est_onsets) == 0:
+                continue
+
+            # Construct onset intervals: [start_time, end_time] for each onset
+            ref_intervals = np.array([[onset, onset + frame_hop] for onset in ref_onsets])
+            est_intervals = np.array([[onset, onset + frame_hop] for onset in est_onsets])
+
+            try:
+                p, r, f, _ = mir_eval.transcription.precision_recall_f1_overlap(
+                    ref_intervals, np.array(ref_pitches),
+                    est_intervals, np.array(est_pitches),
+                    onset_tolerance=0.05
+                )
+                mir_precision += p
+                mir_recall += r
+                mir_f1 += f
+            except Exception as e:
+                print(f"[WARN] mir_eval failed on batch: {e}")
+
+        num_eval_batches = len(ref_onsets_all)
+        if num_eval_batches > 0:
+            mir_precision /= num_eval_batches
+            mir_recall /= num_eval_batches
+            mir_f1 /= num_eval_batches
+            print(f"[mir_eval] Precision: {mir_precision:.4f} | Recall: {mir_recall:.4f} | F1: {mir_f1:.4f}")
+        else:
+            print("[mir_eval] No valid data for evaluation.")
+
 
         with open(csv_path, 'a', newline='') as f:
             csv.writer(f).writerow([

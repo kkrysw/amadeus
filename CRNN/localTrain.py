@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     val_loader = DataLoader(
         LocalPianoMAPSDataset(tensor_dir, 'val'),
-        batch_size=2,
+        batch_size=1,
         shuffle=False,
         num_workers=2,
         pin_memory=True,

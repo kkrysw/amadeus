@@ -6,27 +6,20 @@ import numpy as np
 from tqdm import tqdm
 from torchaudio.transforms import MelSpectrogram
 
-# === Settings ===
-audio_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\newMAP\audio"
-output_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\real_preprocessed_batches"
-TARGET_FRAMES = 1024
-MEL_BANDS = 128
-BATCH_SIZE = 1000
+# Adjust these paths for local use
+audio_dir = r"C:\Users\kevin\Downloads\MAPS\newMAP\audio"
+output_dir = r"C:\Users\kevin\Downloads\MAPS\preprocessed_tensors"
 
-mel_transform = MelSpectrogram(sample_rate=16000, n_fft=2048, hop_length=512, n_mels=MEL_BANDS)
+mel_transform = MelSpectrogram(sample_rate=16000, n_fft=2048, hop_length=512, n_mels=229)
 
 os.makedirs(output_dir, exist_ok=True)
+os.makedirs(os.path.join(output_dir, "mels"), exist_ok=True)
+os.makedirs(os.path.join(output_dir, "labels"), exist_ok=True)
 
 def safe_bounds(val, max_val):
     return max(0, min(val, max_val))
 
-mel_batch = []
-label_batch = []
-batch_count = 0
-processed = 0
-skipped = 0
-
-for fname in tqdm(sorted(os.listdir(audio_dir))):
+for fname in tqdm(os.listdir(audio_dir)):
     if not fname.endswith(".flac"):
         continue
 
@@ -35,8 +28,7 @@ for fname in tqdm(sorted(os.listdir(audio_dir))):
     tsv_path = os.path.join(audio_dir, base + ".tsv")
 
     if not os.path.exists(tsv_path):
-        print(f"[SKIPPED] {base} - Missing TSV")
-        skipped += 1
+        print(f"[SKIP] Missing TSV for {base}")
         continue
 
     try:
@@ -44,16 +36,15 @@ for fname in tqdm(sorted(os.listdir(audio_dir))):
         if sr != 16000:
             wav = torchaudio.transforms.Resample(sr, 16000)(wav)
 
-        mel = mel_transform(wav).squeeze(0).T  # [T, 128]
+        mel = mel_transform(wav).squeeze(0).T  # Shape: (T, 229)
         n_frames = mel.shape[0]
-        mel = mel[:TARGET_FRAMES] if n_frames >= TARGET_FRAMES else torch.cat(
-            [mel, torch.zeros(TARGET_FRAMES - n_frames, MEL_BANDS)], dim=0)
 
-        label = np.zeros((n_frames, 88), dtype=np.float32)
         df = pd.read_csv(tsv_path, sep="\t", names=["onset", "offset", "pitch", "velocity"])
         df["pitch"] = pd.to_numeric(df["pitch"], errors="coerce")
         df = df.dropna(subset=["pitch"])
         df = df[df["pitch"] > 0]
+
+        label = np.zeros((n_frames, 88), dtype=np.float32)
 
         for _, row in df.iterrows():
             on = int(float(row["onset"]) * 100)
@@ -65,34 +56,9 @@ for fname in tqdm(sorted(os.listdir(audio_dir))):
                 if off > on:
                     label[on:off, pitch] = 1.0
 
-        label_tensor = torch.tensor(label)
-        label_tensor = label_tensor[:TARGET_FRAMES] if n_frames >= TARGET_FRAMES else torch.cat(
-            [label_tensor, torch.zeros(TARGET_FRAMES - n_frames, 88)], dim=0)
-
-        mel_batch.append(mel.half())
-        label_batch.append(label_tensor.half())
-        processed += 1
-
-        if len(mel_batch) == BATCH_SIZE:
-            mel_tensor = torch.stack(mel_batch)
-            label_tensor = torch.stack(label_batch)
-            torch.save(mel_tensor, os.path.join(output_dir, f"mel_batch{batch_count}.pt"))
-            torch.save(label_tensor, os.path.join(output_dir, f"label_batch{batch_count}.pt"))
-            #print(f"[SAVED] Batch {batch_count}: {mel_tensor.shape}, {label_tensor.shape}")
-            batch_count += 1
-            mel_batch.clear()
-            label_batch.clear()
+        # Save tensors with expected suffixes
+        torch.save(mel, os.path.join(output_dir, "mels", f"{base}_mel.pt"))
+        torch.save(torch.tensor(label), os.path.join(output_dir, "labels", f"{base}_label.pt"))
 
     except Exception as e:
         print(f"[ERROR] {base}: {e}")
-        skipped += 1
-
-# Save remaining
-if mel_batch:
-    mel_tensor = torch.stack(mel_batch)
-    label_tensor = torch.stack(label_batch)
-    torch.save(mel_tensor, os.path.join(output_dir, f"mel_batch{batch_count}.pt"))
-    torch.save(label_tensor, os.path.join(output_dir, f"label_batch{batch_count}.pt"))
-    #print(f"[SAVED] Final Batch {batch_count}: {mel_tensor.shape}, {label_tensor.shape}")
-
-print(f"\n[INFO] Done. {processed} files processed, {skipped} skipped, {batch_count+1} batch files saved.")

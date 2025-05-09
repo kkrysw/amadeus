@@ -2,14 +2,17 @@ import os
 import torch
 
 # === Paths ===
-mel_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\preprocessed_tensors\mels"
-label_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\preprocessed_tensors\labels"
+mel_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\true_preprocessed_tensors\mels"
+label_dir = r"C:\Users\AlexWu\Documents\DeepLearning\Porject Shit\MAPS\true_preprocessed_tensors\labels"
 print("Starting mismatch check...")
 print(os.listdir(mel_dir)[:5])
 # === Stats ===
 mismatch_count = 0
 total_count = 0
 bad_files = []
+
+sparse_bins = {"<1": 0, "<5": 0, "<10": 0, "<20": 0, "<50": 0, ">=50": 0}
+
 
 for fname in os.listdir(mel_dir):
     if not fname.endswith("_mel.pt"):
@@ -30,6 +33,20 @@ for fname in os.listdir(mel_dir):
         if mel.shape[0] != label.shape[0]:
             mismatch_count += 1
             bad_files.append(f"{base}: mel={mel.shape[0]}, label={label.shape[0]}")
+        else:
+            nonzero = label.sum().item()
+            if nonzero < 1:
+                sparse_bins["<1"] += 1
+            elif nonzero < 5:
+                sparse_bins["<5"] += 1
+            elif nonzero < 10:
+                sparse_bins["<10"] += 1
+            elif nonzero < 20:
+                sparse_bins["<20"] += 1
+            elif nonzero < 50:
+                sparse_bins["<50"] += 1
+            else:
+                sparse_bins[">=50"] += 1
 
         total_count += 1
     except Exception as e:
@@ -45,3 +62,6 @@ if bad_files:
     if len(bad_files) > 30:
         print("... (truncated)")
 
+print("\n=== LABEL SPARSITY DISTRIBUTION ===")
+for k, v in sparse_bins.items():
+    print(f"{k} non-zeros: {v}")

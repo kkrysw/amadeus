@@ -45,7 +45,7 @@ criterion = nn.BCEWithLogitsLoss()
 if __name__ == "__main__":
     train_loader = DataLoader(
         LocalPianoMAPSDataset(tensor_dir, 'train'),
-        batch_size=1,
+        batch_size=2,
         shuffle=True,
         num_workers=2,
         pin_memory=True,
@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     val_loader = DataLoader(
         LocalPianoMAPSDataset(tensor_dir, 'val'),
-        batch_size=1,
+        batch_size=2,
         shuffle=False,
         num_workers=2,
         pin_memory=True,

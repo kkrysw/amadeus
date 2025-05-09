@@ -80,7 +80,7 @@ if __name__ == "__main__":
     start = time.time()
     print("STARTING!\n")
 
-    for epoch in range(1, 6):
+    for epoch in range(1, 4):
         model.train()
         total_loss = 0
         for mel, label, onset in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):
@@ -156,8 +156,7 @@ if __name__ == "__main__":
         mir_precision, mir_recall, mir_f1 = 0, 0, 0
         for ref_onsets, ref_pitches, est_onsets, est_pitches in zip(
             ref_onsets_all, ref_pitches_all, est_onsets_all, est_pitches_all):
-            p, r, f = mir_eval.transcription.onset_precision_recall_f1(
-            ref_onsets, ref_pitches, est_onsets, est_pitches, onset_tolerance=0.05)
+            p, r, f = mir_eval.transcription.onset_precision_recall_f1(ref_onsets, ref_pitches, est_onsets, est_pitches)
             mir_precision += p
             mir_recall += r
             mir_f1 += f

@@ -80,7 +80,7 @@ if __name__ == "__main__":
     start = time.time()
     print("STARTING!\n")
 
-    for epoch in range(1, 6):
+    for epoch in range(1, 4):
         model.train()
         total_loss = 0
         for mel, label, onset in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):

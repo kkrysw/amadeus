@@ -49,7 +49,7 @@ criterion = nn.BCEWithLogitsLoss()
 if __name__ == "__main__":
     train_loader = DataLoader(
         LocalPianoMAPSDataset(tensor_dir, 'train'),
-        batch_size=4,
+        batch_size=1,
         shuffle=True,
         num_workers=2,
         pin_memory=True,
@@ -58,7 +58,7 @@ if __name__ == "__main__":
 
     val_loader = DataLoader(
         LocalPianoMAPSDataset(tensor_dir, 'val'),
-        batch_size=4,
+        batch_size=1,
         shuffle=False,
         num_workers=2,
         pin_memory=True,
@@ -74,7 +74,6 @@ if __name__ == "__main__":
     print("STARTING!\n")
 
     for epoch in range(1, 2):
-        torch.cuda.empty_cache() #temp
         model.train()
         total_loss = 0
         for mel, label, onset in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):

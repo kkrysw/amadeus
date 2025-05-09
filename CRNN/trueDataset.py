@@ -31,8 +31,8 @@ class PianoMAPSDataset(Dataset):
             self.loaded_batches[batch_idx] = (mel, label)
 
         mel_batch, label_batch = self.loaded_batches[batch_idx]
-        mel_tensor = mel_batch[sample_idx].unsqueeze(0)  # [1, T, 128]
-        label_tensor = label_batch[sample_idx]           # [T, 88]
+        mel_tensor = mel_batch[sample_idx].unsqueeze(0).float()     # [1, T, 128]
+        label_tensor = label_batch[sample_idx].float()              # [T, 88]
 
         onset_tensor = (label_tensor[1:] > 0) & (label_tensor[:-1] == 0)
         onset_tensor = torch.cat([label_tensor[:1] > 0, onset_tensor], dim=0).float()

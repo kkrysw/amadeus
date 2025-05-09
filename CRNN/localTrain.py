@@ -17,23 +17,19 @@ def compute_frame_metrics(preds, targets, threshold=0.05):
     acc = accuracy_score(targets_bin.flatten(), preds_bin.flatten())
     return {"frame_precision": p, "frame_recall": r, "frame_f1": f1, "frame_accuracy": acc}
 
-def collate_pad_fn(batch):
+def collate_pad_fn(batch, global_len=408):
     import torch.nn.functional as F
     mels, labels, onsets = zip(*batch)
 
-    # All mels: [1, 229, T] → concat over time dim
-    max_len = max(mel.shape[-1] for mel in mels)
-
-    padded_mels = [F.pad(mel, (0, max_len - mel.shape[-1])) for mel in mels]  # keep [1, 229, T]
-    padded_labels = [F.pad(label, (0, 0, 0, max_len - label.shape[0])) for label in labels]  # [T, 88]
-    padded_onsets = [F.pad(onset, (0, 0, 0, max_len - onset.shape[0])) for onset in onsets]  # [T, 88]
+    padded_mels = [F.pad(mel, (0, global_len - mel.shape[-1])) for mel in mels]  # keep [1, 229, T]
+    padded_labels = [F.pad(label, (0, 0, 0, global_len - label.shape[0])) for label in labels]  # [T, 88]
+    padded_onsets = [F.pad(onset, (0, 0, 0, global_len - onset.shape[0])) for onset in onsets]  # [T, 88]
 
     return (
         torch.stack(padded_mels),                            # → [B, 1, 229, T]
         torch.stack(padded_labels),                          # → [B, T, 88]
         torch.stack(padded_onsets),                          # → [B, T, 88]
     )
-
 
 # Set local tensor path
 tensor_dir = "/content/preprocessed_tensors"

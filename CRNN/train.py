@@ -62,7 +62,7 @@ csv_path = os.path.join(save_dir, 'loss_log.csv')
 with open(csv_path, 'w', newline='') as f:
     csv.writer(f).writerow(['Epoch', 'Train Loss', 'Val Loss', 'F1', 'Precision', 'Recall', 'Accuracy'])
 
-for epoch in range(1, 11):
+for epoch in range(1, 6):
     model.train()
     total_loss = 0
     for mel, label, onset in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):
@@ -142,6 +142,14 @@ for epoch in range(1, 11):
         print(f"[mir_eval] Precision: {mir_p:.4f}, Recall: {mir_r:.4f}, F1: {mir_f:.4f}")
     else:
         print("[mir_eval] No valid note events detected.")
+
+    # Save intermediate checkpoint and metrics
+    torch.save(model.state_dict(), os.path.join(save_dir, f'checkpoint_epoch_{epoch}.pt'))
+    with open(csv_path, 'a', newline='') as f:
+        csv.writer(f).writerow([
+            epoch, avg_train_loss, val_loss / len(val_loader),
+            best_f1, precision, recall, accuracy
+        ])
 
     scheduler.step()
     print("Training finished.")

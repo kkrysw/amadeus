@@ -121,6 +121,7 @@ if __name__ == "__main__":
                 for b in range(pred_bin.shape[0]):
                     ref_onsets, ref_pitches = piano_roll_to_notes(target_bin[b], frame_hop_s)
                     est_onsets, est_pitches = piano_roll_to_notes(pred_bin[b], frame_hop_s)
+                    
                     ref_onsets_all.append(ref_onsets)
                     ref_pitches_all.append(ref_pitches)
                     est_onsets_all.append(est_onsets)
@@ -156,6 +157,11 @@ if __name__ == "__main__":
         mir_precision, mir_recall, mir_f1 = 0, 0, 0
         for ref_onsets, ref_pitches, est_onsets, est_pitches in zip(
             ref_onsets_all, ref_pitches_all, est_onsets_all, est_pitches_all):
+            ref_onsets = np.sort(ref_onsets)
+            est_onsets = np.sort(est_onsets)
+            min_length = min(len(ref_onsets), len(est_onsets))
+            ref_onsets = ref_onsets[:min_length]
+            est_onsets = est_onsets[:min_length]
             ref_onsets = np.column_stack((ref_onsets, np.zeros(ref_onsets.shape)))
             est_onsets = np.column_stack((est_onsets, np.zeros(est_onsets.shape))) 
             p, r, f = mir_eval.transcription.onset_precision_recall_f1(ref_onsets, ref_pitches, est_onsets, est_pitches)

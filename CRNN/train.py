@@ -132,11 +132,12 @@ for epoch in range(1, args.num_epochs + 1):
 
             optimizer.zero_grad()
 
-            with amp.autocast(device_type='cuda'):
+            with torch.autocast(device_type='cuda', dtype=torch.float16):
                 frame_out, onset_out = model(mel)
                 loss = criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
 
             scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
@@ -154,6 +155,7 @@ for epoch in range(1, args.num_epochs + 1):
     except Exception:
         traceback.print_exc()
         break
+
 
     avg_train_loss = train_loss / len(train_loader)
 

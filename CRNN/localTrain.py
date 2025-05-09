@@ -156,6 +156,8 @@ if __name__ == "__main__":
         mir_precision, mir_recall, mir_f1 = 0, 0, 0
         for ref_onsets, ref_pitches, est_onsets, est_pitches in zip(
             ref_onsets_all, ref_pitches_all, est_onsets_all, est_pitches_all):
+            ref_onsets = np.column_stack((ref_onsets, np.zeros(ref_onsets.shape)))
+            est_onsets = np.column_stack((est_onsets, np.zeros(est_onsets.shape))) 
             p, r, f = mir_eval.transcription.onset_precision_recall_f1(ref_onsets, ref_pitches, est_onsets, est_pitches)
             mir_precision += p
             mir_recall += r

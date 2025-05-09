@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     val_loader = DataLoader(
         LocalPianoMAPSDataset(tensor_dir, 'val'),
-        batch_size=1,
+        batch_size=2,
         shuffle=False,
         num_workers=2,
         pin_memory=True,
@@ -124,5 +124,8 @@ if __name__ == "__main__":
             ])
 
         scheduler.step()
+
+        del mel, label, onset, frame_out, onset_out #temp
+        torch.cuda.empty_cache() #temp
 
     print("Local training finished.")

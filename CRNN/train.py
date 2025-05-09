@@ -119,7 +119,7 @@ if __name__ == "__main__":
                     plt.title(f"Sigmoid Heatmap Epoch {epoch}")
                     plt.colorbar()
                     plt.tight_layout()
-                    plt.savefig(f"{args.save_dir}/heatmap_epoch{epoch}.png")
+                    plt.savefig(f"{save_dir}/heatmap_epoch{epoch}.png")
                     plt.close()
 
                 # Continue with threshold sweep

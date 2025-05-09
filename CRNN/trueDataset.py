@@ -4,35 +4,37 @@ from torch.utils.data import Dataset
 
 class PianoMAPSDataset(Dataset):
     def __init__(self, root_dir, split='train'):
-        self.input_dir = os.path.join(root_dir, 'mels')
-        self.label_dir = os.path.join(root_dir, 'labels')
+        self.mel_batches = sorted([os.path.join(root_dir, f) for f in os.listdir(root_dir) if f.startswith("mel_batch")])
+        self.label_batches = sorted([os.path.join(root_dir, f) for f in os.listdir(root_dir) if f.startswith("label_batch")])
 
-        input_files = sorted([f for f in os.listdir(self.input_dir) if f.endswith("_mel.pt")])
-        label_files = sorted([f for f in os.listdir(self.label_dir) if f.endswith("_label.pt")])
+        assert len(self.mel_batches) == len(self.label_batches), "Mismatch between mel and label batch files"
+        print(f"[INFO] Found {len(self.mel_batches)} batched mel/label pairs.")
 
-        input_basenames = {f.replace("_mel.pt", ""): f for f in input_files}
-        label_basenames = {f.replace("_label.pt", ""): f for f in label_files}
+        self.batch_index_map = []
+        self.loaded_batches = {}
 
-        common_basenames = sorted(set(input_basenames) & set(label_basenames))
-        print(f"[DEBUG] Total input files: {len(common_basenames)}")
-
-        self.data = []
-        for base in common_basenames:
-            input_path = os.path.join(self.input_dir, input_basenames[base])
-            label_path = os.path.join(self.label_dir, label_basenames[base])
-            self.data.append((input_path, label_path))
-
-        print(f"[INFO] Collected {len(self.data)} input-label pairs.")
+        for batch_idx, mel_path in enumerate(self.mel_batches):
+            mel_tensor = torch.load(mel_path, map_location="cpu")
+            num_samples = mel_tensor.shape[0]
+            for i in range(num_samples):
+                self.batch_index_map.append((batch_idx, i))
 
     def __len__(self):
-        return len(self.data)
+        return len(self.batch_index_map)
 
     def __getitem__(self, idx):
-        input_path, label_path = self.data[idx]
-        input_tensor = torch.load(input_path).float().T.unsqueeze(0)  # [1, 229, T]
-        label_tensor = torch.load(label_path).float()  # [T, 88]
+        batch_idx, sample_idx = self.batch_index_map[idx]
+
+        if batch_idx not in self.loaded_batches:
+            mel = torch.load(self.mel_batches[batch_idx], map_location="cpu")
+            label = torch.load(self.label_batches[batch_idx], map_location="cpu")
+            self.loaded_batches[batch_idx] = (mel, label)
+
+        mel_batch, label_batch = self.loaded_batches[batch_idx]
+        mel_tensor = mel_batch[sample_idx].unsqueeze(0)  # [1, T, 128]
+        label_tensor = label_batch[sample_idx]           # [T, 88]
 
         onset_tensor = (label_tensor[1:] > 0) & (label_tensor[:-1] == 0)
-        onset_tensor = torch.cat([label_tensor[:1] > 0, onset_tensor], dim=0).float()  # [T, 88]
+        onset_tensor = torch.cat([label_tensor[:1] > 0, onset_tensor], dim=0).float()
 
-        return input_tensor, label_tensor, onset_tensor
+        return mel_tensor, label_tensor, onset_tensor

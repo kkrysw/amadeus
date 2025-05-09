@@ -24,6 +24,18 @@ def collate_pad_fn(batch, global_len=408):
         torch.stack(padded_onsets),                          # → [B, T, 88]
     )
 
+class FocalLoss(nn.Module):
+    def __init__(self, gamma=2.0, weight=None):
+        super().__init__()
+        self.gamma = gamma
+        self.bce = nn.BCEWithLogitsLoss(weight=weight)
+
+    def forward(self, input, target):
+        bce_loss = self.bce(input, target)
+        pt = torch.exp(-bce_loss)
+        return ((1 - pt) ** self.gamma * bce_loss).mean()
+
+
 # Set local tensor path
 tensor_dir = "/content/preprocessed_tensors"
 save_dir = "/content/weights_local"
@@ -34,7 +46,7 @@ model = CRNN().to(DEVICE)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
 pos_weight = torch.tensor([20.0]).to(DEVICE)
-criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([20.0]).to(DEVICE))
 
 if __name__ == "__main__":
     train_loader = DataLoader(
@@ -63,7 +75,7 @@ if __name__ == "__main__":
     start = time.time()
     print("STARTING!\n")
 
-    for epoch in range(1, 6):
+    for epoch in range(1, 11):
         model.train()
         total_loss = 0
         for mel, label, onset in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):
@@ -89,31 +101,51 @@ if __name__ == "__main__":
         val_loss=0
         total_tp, total_fp, total_fn, total_tn = 0, 0, 0, 0
         with torch.no_grad():
+            batch_counter = 0
             for mel, label, onset in val_loader:
                 mel, label, onset = mel.to(DEVICE), label.to(DEVICE), onset.to(DEVICE)
                 frame_out, onset_out = model(mel)
                 loss = 0.5 * criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
                 val_loss += loss.item()
-                pred=torch.sigmoid(frame_out).cpu()
-                target=label.cpu()
 
-            # Threshold sweep
-            for thresh in [0.005, 0.01, 0.05, 0.1, 0.2]:
-                pred_bin = (pred > thresh).numpy().astype(int)
-                target_bin = (target > 0.5).numpy().astype(int)
+                pred = torch.sigmoid(frame_out).cpu()
+                target = label.cpu()
 
-                pred_flat = pred_bin.flatten()
-                target_flat = target_bin.flatten()
+                if epoch == 1 and batch_counter == 0:
+                    import matplotlib.pyplot as plt
+                    heat = pred[0].numpy().T  # [88, T]
+                    plt.figure(figsize=(10, 5))
+                    plt.imshow(heat, aspect='auto', origin='lower', cmap='magma')
+                    plt.title(f"Sigmoid Heatmap Epoch {epoch}")
+                    plt.colorbar()
+                    plt.tight_layout()
+                    plt.savefig(f"{args.save_dir}/heatmap_epoch{epoch}.png")
+                    plt.close()
 
-                tn, fp, fn, tp = confusion_matrix(target_flat, pred_flat, labels=[0, 1]).ravel()
+                # Continue with threshold sweep
+                best_f1 = 0
+                best_thresh = 0
+                for thresh in [0.005, 0.01, 0.05, 0.1, 0.2]:
+                    pred_bin = (pred > thresh).numpy().astype(int)
+                    target_bin = (target > 0.5).numpy().astype(int)
 
-                precision = tp / (tp + fp + 1e-8)
-                recall = tp / (tp + fn + 1e-8)
-                f1 = 2 * precision * recall / (precision + recall + 1e-8)
-                acc = (tp + tn) / (tp + fp + fn + tn + 1e-8)
+                    pred_flat = pred_bin.flatten()
+                    target_flat = target_bin.flatten()
 
-                print(f"[THRESH={thresh:.3f}] F1: {f1:.4f} | Precision: {precision:.4f} | Recall: {recall:.4f} | Accuracy: {acc:.4f}")
-            
+                    tn, fp, fn, tp = confusion_matrix(target_flat, pred_flat, labels=[0, 1]).ravel()
+
+                    precision = tp / (tp + fp + 1e-8)
+                    recall = tp / (tp + fn + 1e-8)
+                    f1 = 2 * precision * recall / (precision + recall + 1e-8)
+                    acc = (tp + tn) / (tp + fp + fn + tn + 1e-8)
+
+                    if f1 > best_f1:
+                        best_f1 = f1
+                        best_thresh = thresh
+
+                batch_counter += 1
+
+        print(f"[Epoch {epoch}] Best Threshold: {best_thresh:.3f} with F1: {best_f1:.4f}")
 
         avg_val_loss = val_loss / len(val_loader)
 

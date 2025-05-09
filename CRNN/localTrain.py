@@ -5,17 +5,10 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import csv
-from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 import numpy as np
 from model.model import CRNN
 from localTrueDataset import LocalPianoMAPSDataset
-
-def compute_frame_metrics(preds, targets, threshold=0.05):
-    preds_bin = (preds > threshold).cpu().numpy().astype(int)
-    targets_bin = (targets > 0.5).cpu().numpy().astype(int)
-    p, r, f1, _ = precision_recall_fscore_support(targets_bin.flatten(), preds_bin.flatten(), average='binary', zero_division=0)
-    acc = accuracy_score(targets_bin.flatten(), preds_bin.flatten())
-    return {"frame_precision": p, "frame_recall": r, "frame_f1": f1, "frame_accuracy": acc}
+from sklearn.metrics import confusion_matrix
 
 def collate_pad_fn(batch, global_len=408):
     import torch.nn.functional as F
@@ -89,32 +82,46 @@ if __name__ == "__main__":
         avg_train_loss = total_loss / len(train_loader)
 
         model.eval()
-        val_loss, all_preds, all_targets = 0, [], []
+        val_loss=0
+        total_tp, total_fp, total_fn, total_tn = 0, 0, 0, 0
         with torch.no_grad():
-            for mel, label, onset in val_loader:
-                mel = mel.to(DEVICE, non_blocking=True)
-                label = label.to(DEVICE, non_blocking=True)
-                onset = onset.to(DEVICE, non_blocking=True)
-
+            for mel, label in val_loader:
+                mel, label, onset = mel.to(DEVICE), label.to(DEVICE), onset.to(DEVICE)
                 frame_out, onset_out = model(mel)
                 loss = 0.5 * criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
                 val_loss += loss.item()
-                all_preds.append(torch.sigmoid(frame_out).cpu())
-                all_targets.append(label.cpu())
+                pred=torch.sigmoid(frame_out).cpu()
+                target=label.cpu()
+
+                pred_bin = (pred > 0.05).numpy().astype(int)
+                target_bin = (target > 0.5).numpy().astype(int)
+
+                pred_flat = pred_bin.flatten()
+                target_flat = target_bin.flatten()
+            
+                tn, fp, fn, tp = confusion_matrix(target_flat, pred_flat, labels=[0,1]).ravel()
+            
+                total_tp += tp
+                total_fp += fp
+                total_fn += fn
+                total_tn += tn
 
         avg_val_loss = val_loss / len(val_loader)
-        preds = torch.cat(all_preds)
-        targets = torch.cat(all_targets)
 
-        mask = (targets.sum(dim=-1) != 0)
-        valid_preds = preds[mask]
-        valid_targets = targets[mask]
+        precision = total_tp / (total_tp + total_fp + 1e-8)
+        recall = total_tp / (total_tp + total_fn + 1e-8)
+        f1 = 2 * precision * recall / (precision + recall + 1e-8)
+        accuracy = (total_tp + total_tn) / (total_tp + total_fp + total_fn + total_tn + 1e-8)
 
-        metrics = compute_frame_metrics(valid_preds, valid_targets)
+        metrics = {
+            'frame_precision': precision,
+            'frame_recall': recall,
+            'frame_f1': f1,
+            'frame_accuracy': accuracy
+        }
 
         print(f"[Epoch {epoch}] Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
         print(f"Frame F1: {metrics['frame_f1']:.4f} | Precision: {metrics['frame_precision']:.4f} | Recall: {metrics['frame_recall']:.4f}")
-        print(f"[Epoch {epoch}] Time: {time.time() - start:.2f}s")
 
         with open(csv_path, 'a', newline='') as f:
             csv.writer(f).writerow([
@@ -124,8 +131,5 @@ if __name__ == "__main__":
             ])
 
         scheduler.step()
-
-        del mel, label, onset, frame_out, onset_out #temp
-        torch.cuda.empty_cache() #temp
 
     print("Local training finished.")

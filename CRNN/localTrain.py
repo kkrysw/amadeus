@@ -62,7 +62,7 @@ if __name__ == "__main__":
     start = time.time()
     print("STARTING!\n")
 
-    for epoch in range(1, 2):
+    for epoch in range(1, 6):
         model.train()
         total_loss = 0
         for mel, label, onset in tqdm(train_loader, desc=f"[Epoch {epoch}] Training"):
@@ -93,7 +93,7 @@ if __name__ == "__main__":
                 pred=torch.sigmoid(frame_out).cpu()
                 target=label.cpu()
 
-                pred_bin = (pred > 0.01).numpy().astype(int)
+                pred_bin = (pred > 0.001).numpy().astype(int)
                 target_bin = (target > 0.5).numpy().astype(int)
 
                 pred_flat = pred_bin.flatten()

@@ -85,7 +85,7 @@ if __name__ == "__main__":
         val_loss=0
         total_tp, total_fp, total_fn, total_tn = 0, 0, 0, 0
         with torch.no_grad():
-            for mel, label in val_loader:
+            for mel, label, onset in val_loader:
                 mel, label, onset = mel.to(DEVICE), label.to(DEVICE), onset.to(DEVICE)
                 frame_out, onset_out = model(mel)
                 loss = 0.5 * criterion(frame_out, label) + 0.5 * criterion(onset_out, onset)
